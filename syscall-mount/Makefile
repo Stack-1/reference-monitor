@@ -1,5 +1,5 @@
-obj-m += the_usctm.o
-the_usctm-objs += usctm.o ./lib/vtpmo.o
+obj-m += sys_calls_ref_monitor.o
+sys-calls-ref-monitorobjs += sys_calls_ref_monitor.o 
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
@@ -10,5 +10,4 @@ clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 
 mount:
-	insmod the_usctm.ko
-
+	insmod sys_calls_ref_monitor.ko

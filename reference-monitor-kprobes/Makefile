@@ -1,14 +1,8 @@
-obj-m += the_usctm.o
-the_usctm-objs += usctm.o ./lib/vtpmo.o
+
+obj-m += reference_monitor.o 
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
-	sudo make mount
-	make clean
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-
-mount:
-	insmod the_usctm.ko
-
