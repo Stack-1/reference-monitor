@@ -151,8 +151,8 @@ void syscall_table_finder(void){
 		){
 			// check if candidate maintains the syscall_table
 			if(validate_page( (unsigned long *)(candidate)) ){
-				printk("%s: syscall table found at %px\n",MODNAME,(void*)(hacked_syscall_tbl));
-				printk("%s: sys_ni_syscall found at %px\n",MODNAME,(void*)(hacked_ni_syscall));
+				printk("%s: syscall table found at 0x%px\n",MODNAME,(void*)(hacked_syscall_tbl));
+				printk("%s: sys_ni_syscall found at 0x%px\n",MODNAME,(void*)(hacked_ni_syscall));
 				break;
 			}
 		}
