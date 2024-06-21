@@ -1,3 +1,6 @@
+#include <asm/atomic.h>
+
+
 #define MODNAME "STACK REFERENCE MONITOR"
 #define PASSW_LEN 32
 #define AUDIT if(1)

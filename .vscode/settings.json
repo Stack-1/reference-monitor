@@ -4,6 +4,7 @@
         "unistd.h": "c",
         "scth.h": "c",
         "reference-monitor.h": "c",
-        "utils.h": "c"
+        "utils.h": "c",
+        "stdatomic.h": "c"
     }
 }
