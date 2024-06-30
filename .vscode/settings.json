@@ -5,6 +5,7 @@
         "scth.h": "c",
         "reference-monitor.h": "c",
         "utils.h": "c",
-        "stdatomic.h": "c"
+        "stdatomic.h": "c",
+        "cstdlib": "c"
     }
 }

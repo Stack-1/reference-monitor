@@ -34,6 +34,9 @@
 #include <linux/printk.h>
 #include <linux/spinlock.h>
 #include <linux/cred.h>
+#include <linux/file.h>
+#include <linux/limits.h>
+#include <linux/module.h>
 
 #include "lib/include/scth.h"
 #include "stack_reference_monitor.h"
@@ -61,25 +64,12 @@ int restore[HACKED_ENTRIES] = {[0 ...(HACKED_ENTRIES - 1)] - 1};                
 
 /* syscall codes */
 int switch_state;
+int add_to_blacklist;
+int remove_from_blacklist;
+int print_blacklist;
+int get_blacklist_size;
 
-/*
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(1, _dummy_print, int, state){
-#else
-asmlinkage long sys_dummy_print(int state) {
-#endif
-
-        printk("Syscall called, state is: %d\n",state);
-        return 0;
-}
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-        long sys_dummy_print = (unsigned long) __x64_sys_dummy_print;
-#else
-#endif
-*/
-
-/* update state syscall */
+/* update RF state syscall */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(2, _switch_rf_state, int, state, char *, password)
 {
@@ -88,7 +78,6 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
 {
 #endif
     kuid_t euid;
-    int i, ret;
     char *kernel_password;
 
     // Check if RF state is compliant with the possible ones
@@ -125,22 +114,21 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     }
 
     // if requested state is REC-ON or REC-OFF, check password
-    if (state > 1)
-    {
-        if (strcmp(reference_monitor.password, encrypt_password(kernel_password)) != 0)
-        {
-            pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);
-            goto end;
-            return -EACCES;
-        }
-        else
-        {
 
-            reference_monitor.state = state;
-            AUDIT
-            {
-                printk("%s: [INFO] Password check successful, state changed to %d\n", MODNAME, state);
-            }
+    if (strcmp(reference_monitor.password, encrypt_password(kernel_password)) != 0)
+    {
+        pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);
+        goto end;
+        return -EACCES;
+    }
+    else
+    {
+        spin_lock(&reference_monitor.lock);
+        reference_monitor.state = state;
+        spin_unlock(&reference_monitor.lock);
+        AUDIT
+        {
+            printk("%s: [INFO] Password check successful, state changed to %d\n", MODNAME, state);
         }
     }
 
@@ -149,8 +137,112 @@ end:
     return reference_monitor.state;
 }
 
+/* update state syscall */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-long sys_switch_rf_state = (unsigned long)__x64_sys_switch_rf_statee;
+__SYSCALL_DEFINEx(2, _add_to_blacklist, char *, relative_path)
+{
+#else
+asmlinkage long sys_add_to_blacklist(char *relative_path)
+{
+#endif
+    char *path, *kernel_rel_path;
+    struct file *dir;
+    int ret;
+    blacklist_node *curr;
+    blacklist_node *new;
+
+    if (reference_monitor.state < 2)
+    {
+        printk(KERN_ERR "%s: [ERROR] The reference monitor is not in a reconfiguration state\n", MODNAME);
+        return -EPERM;
+    }
+
+    kernel_rel_path = kmalloc(PATH_MAX, GFP_KERNEL);
+    if (!kernel_rel_path)
+    {
+        pr_err("%s: [ERROR] Error in kmalloc allocation\n", MODNAME);
+        return -ENOMEM;
+    }
+
+    ret = copy_from_user(kernel_rel_path, relative_path, PATH_MAX);
+    if (ret == -1)
+    {
+        pr_err("%s: [ERROR] Error in copy_from_user (return value %d)\n", MODNAME, ret);
+        kfree(kernel_rel_path);
+        return -EAGAIN;
+    }
+
+    new = (blacklist_node *)kmalloc(sizeof(blacklist_node), GFP_KERNEL);
+    if (!new)
+    {
+        pr_err("%s: [ERROR] Error in kmalloc allocation\n", MODNAME);
+        return -ENOMEM;
+    }
+
+    new->path = kmalloc(PATH_MAX, GFP_KERNEL);
+
+    strcpy(new->path, (const char *)kernel_rel_path);
+
+    spin_lock(&reference_monitor.lock);
+
+    curr = reference_monitor.blacklist_head;
+    if (curr == NULL)
+    {
+        reference_monitor.blacklist_head = new;
+    }
+    else
+    {
+        while (curr->next != NULL)
+        {
+            if(strcmp(curr->path, new->path) == 0){
+                spin_unlock(&reference_monitor.lock);
+                return -EALREADY;
+            }
+                goto exist;
+            curr = curr->next;
+        }
+        curr->next = new;
+    }
+    
+    spin_unlock(&reference_monitor.lock);
+
+    kfree(kernel_rel_path);
+
+    return 0;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
+__SYSCALL_DEFINEx(4, _print_blacklist, char *__user, files, char *__user, dirs, size_t, files_size, size_t, dirs_size)
+{
+#else
+asmlinkage long sys_print_blacklist(void)
+{
+#endif
+    blacklist_node *curr = reference_monitor.blacklist_head;
+    if (curr == NULL)
+    {
+        printk( "Blacklist is empty\n");
+    }
+    else
+    {
+        printk("%s: Blacklist elements:\n", MODNAME);
+        while (curr->next != NULL)
+        {
+            printk("- %s\n", curr->path);
+            curr = curr->next;
+        }
+        printk("- %s\n", curr->path);
+    }
+
+    return 0;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
+long sys_switch_rf_state = (unsigned long)__x64_sys_switch_rf_state;
+long sys_add_to_blacklist = (unsigned long)__x64_sys_add_to_blacklist;
+// long sys_remove_from_blacklist = (unsigned long)__x64_sys_remove_from_blacklist;
+long sys_print_blacklist = (unsigned long)__x64_sys_print_blacklist;
+// long sys_get_blacklist_size = (unsigned long)__x64_sys_get_blacklist_size;
 #else
 #endif
 
@@ -179,6 +271,8 @@ int initialize_syscalls(void)
     }
 
     new_sys_call_array[0] = (unsigned long)sys_switch_rf_state;
+    new_sys_call_array[1] = (unsigned long)sys_add_to_blacklist;
+    new_sys_call_array[2] = (unsigned long)sys_print_blacklist;
 
     AUDIT
     {
@@ -214,6 +308,10 @@ int initialize_syscalls(void)
 
     /* set syscall codes */
     switch_state = restore[0];
+    add_to_blacklist = restore[1];
+    print_blacklist = restore[2];
+    remove_from_blacklist = restore[3];
+    get_blacklist_size = restore[4];
 
     return 0;
 }
@@ -240,6 +338,7 @@ int init_module(void)
 
     spin_lock(&reference_monitor.lock);
     reference_monitor.state = 0;
+    reference_monitor.blacklist_head = NULL;
     spin_unlock(&reference_monitor.lock);
 
     printk("%s: [INFO] Encryipting password\n", MODNAME);
@@ -254,6 +353,8 @@ int init_module(void)
 void cleanup_module(void)
 {
     int i;
+    blacklist_node *prev = reference_monitor.blacklist_head;
+    blacklist_node *curr = reference_monitor.blacklist_head->next;
 
     AUDIT
     {

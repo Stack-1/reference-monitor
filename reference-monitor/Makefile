@@ -4,6 +4,8 @@ the_stack_reference_monitor-objs += stack_reference_monitor.o lib/scth.o utils.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
+	sudo make mount
+	make clean
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
