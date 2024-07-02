@@ -4,6 +4,13 @@
 #define MODNAME "STACK REFERENCE MONITOR"
 #define PASSW_LEN 32
 #define AUDIT if(1)
+#define DEBUG
+
+#ifdef DEBUG 
+#define CONDITIONAL if(0)
+#else
+#define CONDITIONAL if(1)
+#endif
 
 struct blacklist_entry {
         struct list_head list;

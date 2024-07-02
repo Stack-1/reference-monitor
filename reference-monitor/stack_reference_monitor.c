@@ -99,7 +99,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     if (copy_from_user(kernel_password, password, PASSW_LEN))
     {
         pr_err("%s: [ERROR] Error while copying password from user address space to kernel address space\n", MODNAME);
-        goto end;
+        kfree(kernel_password);
         return -EAGAIN;
     }
 
@@ -109,7 +109,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     if (!uid_eq(euid, GLOBAL_ROOT_UID))
     {
         pr_err("%s: [INFO] Access denied: only root (EUID 0) can change the state\n", MODNAME);
-        goto end;
+        kfree(kernel_password);
         return -EPERM;
     }
 
@@ -118,7 +118,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     if (strcmp(reference_monitor.password, encrypt_password(kernel_password)) != 0)
     {
         pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);
-        goto end;
+        kfree(kernel_password);
         return -EACCES;
     }
     else
@@ -132,22 +132,22 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
         }
     }
 
-end:
     kfree(kernel_password);
     return reference_monitor.state;
 }
 
 /* update state syscall */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(2, _add_to_blacklist, char *, relative_path)
+__SYSCALL_DEFINEx(2, _add_to_blacklist, char *, relative_path, char *, passowrd)
 {
 #else
-asmlinkage long sys_add_to_blacklist(char *relative_path)
+asmlinkage long sys_add_to_blacklist(char *relative_path, char *password)
 {
 #endif
-    char *path, *kernel_rel_path;
+    char *path, *kernel_rel_path, *kernel_password;
     struct file *dir;
     int ret;
+    kuid_t euid;
     blacklist_node *curr;
     blacklist_node *new;
 
@@ -155,6 +155,40 @@ asmlinkage long sys_add_to_blacklist(char *relative_path)
     {
         printk(KERN_ERR "%s: [ERROR] The reference monitor is not in a reconfiguration state\n", MODNAME);
         return -EPERM;
+    }
+
+    kernel_password = kmalloc(PASSW_LEN, GFP_KERNEL);
+    if (!kernel_password)
+    {
+        pr_err("%s: [ERROR] Error in kmalloc allocation\n", MODNAME);
+        return -ENOMEM;
+    }
+
+    // Use Cross-Ring Data Move to copy password from user to kernel space
+    if (copy_from_user(kernel_password, password, PASSW_LEN))
+    {
+        pr_err("%s: [ERROR] Error while copying password from user address space to kernel address space\n", MODNAME);
+        kfree(kernel_password);
+        return -EAGAIN;
+    }
+
+    euid = current_euid();
+
+    // check EUID
+    if (!uid_eq(euid, GLOBAL_ROOT_UID))
+    {
+        pr_err("%s: [INFO] Access denied: only root (EUID 0) can change the state\n", MODNAME);
+        kfree(kernel_password);
+        return -EPERM;
+    }
+
+    // if requested state is REC-ON or REC-OFF, check password
+
+    if (strcmp(reference_monitor.password, encrypt_password(kernel_password)) != 0)
+    {
+        pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);
+        kfree(kernel_password);
+        return -EACCES;
     }
 
     kernel_rel_path = kmalloc(PATH_MAX, GFP_KERNEL);
@@ -183,6 +217,7 @@ asmlinkage long sys_add_to_blacklist(char *relative_path)
 
     strcpy(new->path, (const char *)kernel_rel_path);
 
+
     spin_lock(&reference_monitor.lock);
 
     curr = reference_monitor.blacklist_head;
@@ -190,29 +225,45 @@ asmlinkage long sys_add_to_blacklist(char *relative_path)
     {
         reference_monitor.blacklist_head = new;
     }
+    else if (curr->next == NULL)
+    {
+        if (strcmp(curr->path, kernel_rel_path) == 0)
+        {
+            spin_unlock(&reference_monitor.lock);
+            kfree(kernel_rel_path);
+            kfree(kernel_password);
+            printk("%s: [DEBUG] Duplicate found", MODNAME);
+            return -EEXIST;
+        }
+        curr->next = new;
+    }
     else
     {
         while (curr->next != NULL)
         {
-            if(strcmp(curr->path, new->path) == 0){
+            if (strcmp(curr->path, kernel_rel_path) == 0)
+            {
                 spin_unlock(&reference_monitor.lock);
-                return -EALREADY;
+                kfree(kernel_rel_path);
+                kfree(kernel_password);
+                printk("%s: [DEBUG] Duplicate found", MODNAME);
+                return -EEXIST;
             }
-                goto exist;
             curr = curr->next;
         }
         curr->next = new;
     }
-    
+
     spin_unlock(&reference_monitor.lock);
 
     kfree(kernel_rel_path);
+    kfree(kernel_password);
 
     return 0;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(4, _print_blacklist, char *__user, files, char *__user, dirs, size_t, files_size, size_t, dirs_size)
+__SYSCALL_DEFINEx(2, _print_blacklist, char *__user, files, char *__user, dirs, size_t, files_size, size_t, dirs_size)
 {
 #else
 asmlinkage long sys_print_blacklist(void)
@@ -221,7 +272,7 @@ asmlinkage long sys_print_blacklist(void)
     blacklist_node *curr = reference_monitor.blacklist_head;
     if (curr == NULL)
     {
-        printk( "Blacklist is empty\n");
+        printk("Blacklist is empty\n");
     }
     else
     {
