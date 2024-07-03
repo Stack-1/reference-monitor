@@ -1,5 +1,5 @@
 obj-m += the_stack_reference_monitor.o
-the_stack_reference_monitor-objs += stack_reference_monitor.o lib/scth.o utils.o
+the_stack_reference_monitor-objs += stack_reference_monitor.o lib/scth.o utils/utils.o utils/blacklist.o
 
 
 all:
@@ -12,4 +12,4 @@ clean:
 
 mount:
 	@read -p "Select a password: " password; \
-	insmod the_stack_reference_monitor.ko syscalls_table_address=$$(cat /sys/module/the_usctm/parameters/sys_call_table_address) password="$$password"
+	sudo insmod the_stack_reference_monitor.ko syscalls_table_address=$$(cat /sys/module/the_usctm/parameters/sys_call_table_address) password="$$password"

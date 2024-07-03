@@ -12,10 +12,10 @@
  * @file sys_calls_mount.c
  * @brief This is a module that loads on the system call tables the following system calls
  *        to handle operations over the reference monitor:
- *        - reference_on     --> switch to on mode
- *        - reference_off    --> switch to off mode
- *        - reference_rec_on --> switch to rec_on mode
- *        - reference_rec_off--> switch to rec_off mode
+ *        - reference_on     --> reference monitor is operative and protects all the blacklisted paths
+ *        - reference_off    --> reference monitor is off
+ *        - reference_rec_on --> reference monitor is on and it is possible to modify the blacklist using rott privilages
+ *        - reference_rec_off--> reference monitor is off and it is possible to modify the blacklist using rott privilages
  *
  * @author Staccone Simone
  *
@@ -35,12 +35,11 @@
 #include <linux/spinlock.h>
 #include <linux/cred.h>
 #include <linux/file.h>
-#include <linux/limits.h>
-#include <linux/module.h>
 
 #include "lib/include/scth.h"
 #include "stack_reference_monitor.h"
-#include "utils.h"
+#include "utils/utils.h"
+#include "utils/blacklist.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Staccone Simone <simone.staccone@virgilio.it>");
@@ -63,11 +62,11 @@ unsigned long new_sys_call_array[] = {0x0, 0x0, 0x0, 0x0, 0x0};                 
 int restore[HACKED_ENTRIES] = {[0 ...(HACKED_ENTRIES - 1)] - 1};                 /* array of free entries on the syscall table */
 
 /* syscall codes */
-int switch_state;
-int add_to_blacklist;
-int remove_from_blacklist;
-int print_blacklist;
-int get_blacklist_size;
+int switch_state_code;
+int add_to_blacklist_code;
+int remove_from_blacklist_code;
+int print_blacklist_code;
+int get_blacklist_size_code;
 
 /* update RF state syscall */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
@@ -77,62 +76,63 @@ __SYSCALL_DEFINEx(2, _switch_rf_state, int, state, char *, password)
 asmlinkage long sys_switch_rf_state(int state, char *password)
 {
 #endif
-    kuid_t euid;
-    char *kernel_password;
+    char *state_string;
+    int ret;
 
-    // Check if RF state is compliant with the possible ones
-    if (state < 0 || state > 3)
+    // Check if the monitor state is admissible
+    ret = rf_state_check(&reference_monitor);
+    if (ret != 0)
     {
-        pr_err("%s: [ERROR] Wrong state selected for reference monitor, admissible states are 0-on, 1-off, 2-rec_om, 3-rec_off\n", MODNAME);
-        return -EINVAL;
+        return ret;
     }
 
-    // Get memory from slub allocator for RF password
-    kernel_password = kmalloc(PASSW_LEN, GFP_KERNEL); // GFP_KERNEL?
-    if (!kernel_password)
+    // Check if the password is equal to the one stored in the reference monitor state
+    ret = password_check(password, &reference_monitor);
+    if (ret != 0)
     {
-        pr_err("%s: [ERROR] Error in kmalloc allocation while reserving memory for RF password kernel space\n", MODNAME);
-        return -ENOMEM;
+        return ret;
     }
 
-    // Use Cross-Ring Data Move to copy password from user to kernel space
-    if (copy_from_user(kernel_password, password, PASSW_LEN))
+    // Check if the user is running as root
+    ret = euid_check(current_euid());
+    if (ret != 0)
     {
-        pr_err("%s: [ERROR] Error while copying password from user address space to kernel address space\n", MODNAME);
-        kfree(kernel_password);
-        return -EAGAIN;
+        return ret;
     }
 
-    euid = current_euid();
+    spin_lock(&reference_monitor.lock);
+    reference_monitor.state = state;
+    spin_unlock(&reference_monitor.lock);
 
-    // check EUID
-    if (!uid_eq(euid, GLOBAL_ROOT_UID))
+    AUDIT
     {
-        pr_err("%s: [INFO] Access denied: only root (EUID 0) can change the state\n", MODNAME);
-        kfree(kernel_password);
-        return -EPERM;
-    }
-
-    // if requested state is REC-ON or REC-OFF, check password
-
-    if (strcmp(reference_monitor.password, encrypt_password(kernel_password)) != 0)
-    {
-        pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);
-        kfree(kernel_password);
-        return -EACCES;
-    }
-    else
-    {
-        spin_lock(&reference_monitor.lock);
-        reference_monitor.state = state;
-        spin_unlock(&reference_monitor.lock);
-        AUDIT
+        // Debug to print the correct state of the RF as string
+        state_string = kmalloc(sizeof(char) * 16, GFP_KERNEL); // GFP_KERNEL?
+        if (!state_string)
         {
-            printk("%s: [INFO] Password check successful, state changed to %d\n", MODNAME, state);
+            pr_err("%s: [ERROR] Error in kmalloc allocation while reserving memory for RF satte string to debug in kernel space\n", MODNAME);
+            return -ENOMEM;
         }
+        switch (state)
+        {
+        case RF_ON:
+            strcpy(state_string, (const char *)"ON");
+            break;
+        case RF_OFF:
+            strcpy(state_string, (const char *)"OFF");
+            break;
+        case RF_REC_ON:
+            strcpy(state_string, (const char *)"REC_ON");
+            break;
+        case RF_REC_OFF:
+            strcpy(state_string, (const char *)"REC_OFF");
+            break;
+        default:
+            break;
+        }
+        printk("%s: [INFO] Password check successful, state changed to %s\n", MODNAME, state_string);
     }
 
-    kfree(kernel_password);
     return reference_monitor.state;
 }
 
@@ -144,122 +144,87 @@ __SYSCALL_DEFINEx(2, _add_to_blacklist, char *, relative_path, char *, passowrd)
 asmlinkage long sys_add_to_blacklist(char *relative_path, char *password)
 {
 #endif
-    char *path, *kernel_rel_path, *kernel_password;
-    struct file *dir;
     int ret;
-    kuid_t euid;
-    blacklist_node *curr;
-    blacklist_node *new;
 
-    if (reference_monitor.state < 2)
+    // Check if the reference monitor is in reconfiguration state
+    ret = is_rf_rec(&reference_monitor);
+    if (ret != 0)
     {
-        printk(KERN_ERR "%s: [ERROR] The reference monitor is not in a reconfiguration state\n", MODNAME);
-        return -EPERM;
+        return ret;
     }
 
-    kernel_password = kmalloc(PASSW_LEN, GFP_KERNEL);
-    if (!kernel_password)
+    // Check if the password is equal to the one stored in the reference monitor state
+    ret = password_check(password, &reference_monitor);
+    if (ret != 0)
     {
-        pr_err("%s: [ERROR] Error in kmalloc allocation\n", MODNAME);
-        return -ENOMEM;
+        return ret;
     }
 
-    // Use Cross-Ring Data Move to copy password from user to kernel space
-    if (copy_from_user(kernel_password, password, PASSW_LEN))
+    // Check if the user is running as root
+    ret = euid_check(current_euid());
+    if (ret != 0)
     {
-        pr_err("%s: [ERROR] Error while copying password from user address space to kernel address space\n", MODNAME);
-        kfree(kernel_password);
-        return -EAGAIN;
+        return ret;
     }
 
-    euid = current_euid();
-
-    // check EUID
-    if (!uid_eq(euid, GLOBAL_ROOT_UID))
+    // Try to add to blacklist a new path
+    ret = add_to_blacklist(relative_path, &reference_monitor);
+    if (ret != 0)
     {
-        pr_err("%s: [INFO] Access denied: only root (EUID 0) can change the state\n", MODNAME);
-        kfree(kernel_password);
-        return -EPERM;
+        return ret;
     }
-
-    // if requested state is REC-ON or REC-OFF, check password
-
-    if (strcmp(reference_monitor.password, encrypt_password(kernel_password)) != 0)
-    {
-        pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);
-        kfree(kernel_password);
-        return -EACCES;
-    }
-
-    kernel_rel_path = kmalloc(PATH_MAX, GFP_KERNEL);
-    if (!kernel_rel_path)
-    {
-        pr_err("%s: [ERROR] Error in kmalloc allocation\n", MODNAME);
-        return -ENOMEM;
-    }
-
-    ret = copy_from_user(kernel_rel_path, relative_path, PATH_MAX);
-    if (ret == -1)
-    {
-        pr_err("%s: [ERROR] Error in copy_from_user (return value %d)\n", MODNAME, ret);
-        kfree(kernel_rel_path);
-        return -EAGAIN;
-    }
-
-    new = (blacklist_node *)kmalloc(sizeof(blacklist_node), GFP_KERNEL);
-    if (!new)
-    {
-        pr_err("%s: [ERROR] Error in kmalloc allocation\n", MODNAME);
-        return -ENOMEM;
-    }
-
-    new->path = kmalloc(PATH_MAX, GFP_KERNEL);
-
-    strcpy(new->path, (const char *)kernel_rel_path);
-
-
-    spin_lock(&reference_monitor.lock);
-
-    curr = reference_monitor.blacklist_head;
-    if (curr == NULL)
-    {
-        reference_monitor.blacklist_head = new;
-    }
-    else if (curr->next == NULL)
-    {
-        if (strcmp(curr->path, kernel_rel_path) == 0)
-        {
-            spin_unlock(&reference_monitor.lock);
-            kfree(kernel_rel_path);
-            kfree(kernel_password);
-            printk("%s: [DEBUG] Duplicate found", MODNAME);
-            return -EEXIST;
-        }
-        curr->next = new;
-    }
-    else
-    {
-        while (curr->next != NULL)
-        {
-            if (strcmp(curr->path, kernel_rel_path) == 0)
-            {
-                spin_unlock(&reference_monitor.lock);
-                kfree(kernel_rel_path);
-                kfree(kernel_password);
-                printk("%s: [DEBUG] Duplicate found", MODNAME);
-                return -EEXIST;
-            }
-            curr = curr->next;
-        }
-        curr->next = new;
-    }
-
-    spin_unlock(&reference_monitor.lock);
-
-    kfree(kernel_rel_path);
-    kfree(kernel_password);
 
     return 0;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
+__SYSCALL_DEFINEx(2, _remove_from_blacklist, char *, relative_path, char *, passowrd)
+{
+#else
+asmlinkage long sys_remove_from_blacklist(char *relative_path, char *password)
+{
+        int ret;
+
+    // Check if the reference monitor is in reconfiguration state
+    ret = is_rf_rec(&reference_monitor);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    // Check if the password is equal to the one stored in the reference monitor state
+    ret = password_check(password, &reference_monitor);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    // Check if the user is running as root
+    ret = euid_check(current_euid());
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    // Try to add to blacklist a new path
+    ret = remove_from_blacklist(relative_path, &reference_monitor);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    return 0;
+    return 0;
+#endif
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
+__SYSCALL_DEFINEx(1, _get_blacklist_size, int, dummy)
+#else
+asmlinkage long sys_get_blacklist_size(void)
+{
+    return reference_monitor.blacklist_size;
+#endif
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
@@ -291,9 +256,9 @@ asmlinkage long sys_print_blacklist(void)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 long sys_switch_rf_state = (unsigned long)__x64_sys_switch_rf_state;
 long sys_add_to_blacklist = (unsigned long)__x64_sys_add_to_blacklist;
-// long sys_remove_from_blacklist = (unsigned long)__x64_sys_remove_from_blacklist;
+long sys_remove_from_blacklist = (unsigned long)__x64_sys_remove_from_blacklist;
 long sys_print_blacklist = (unsigned long)__x64_sys_print_blacklist;
-// long sys_get_blacklist_size = (unsigned long)__x64_sys_get_blacklist_size;
+long sys_get_blacklist_size = (unsigned long)__x64_sys_get_blacklist_size;
 #else
 #endif
 
@@ -323,7 +288,9 @@ int initialize_syscalls(void)
 
     new_sys_call_array[0] = (unsigned long)sys_switch_rf_state;
     new_sys_call_array[1] = (unsigned long)sys_add_to_blacklist;
-    new_sys_call_array[2] = (unsigned long)sys_print_blacklist;
+    new_sys_call_array[2] = (unsigned long)sys_remove_from_blacklist;
+    new_sys_call_array[3] = (unsigned long)sys_print_blacklist;
+    new_sys_call_array[4] = (unsigned long)sys_get_blacklist_size;
 
     AUDIT
     {
@@ -358,11 +325,11 @@ int initialize_syscalls(void)
     }
 
     /* set syscall codes */
-    switch_state = restore[0];
-    add_to_blacklist = restore[1];
-    print_blacklist = restore[2];
-    remove_from_blacklist = restore[3];
-    get_blacklist_size = restore[4];
+    switch_state_code = restore[0];
+    add_to_blacklist_code = restore[1];
+    remove_from_blacklist_code = restore[2];
+    print_blacklist_code = restore[3];
+    get_blacklist_size_code = restore[4];
 
     return 0;
 }
@@ -390,6 +357,7 @@ int init_module(void)
     spin_lock(&reference_monitor.lock);
     reference_monitor.state = 0;
     reference_monitor.blacklist_head = NULL;
+    reference_monitor.blacklist_size = 0;
     spin_unlock(&reference_monitor.lock);
 
     printk("%s: [INFO] Encryipting password\n", MODNAME);
@@ -404,8 +372,6 @@ int init_module(void)
 void cleanup_module(void)
 {
     int i;
-    blacklist_node *prev = reference_monitor.blacklist_head;
-    blacklist_node *curr = reference_monitor.blacklist_head->next;
 
     AUDIT
     {

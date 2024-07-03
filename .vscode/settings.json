@@ -6,6 +6,7 @@
         "reference-monitor.h": "c",
         "utils.h": "c",
         "stdatomic.h": "c",
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "stack_reference_monitor.h": "c"
     }
 }

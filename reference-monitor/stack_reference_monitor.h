@@ -1,10 +1,19 @@
 #include <asm/atomic.h>
+#include <linux/limits.h>
+
 
 
 #define MODNAME "STACK REFERENCE MONITOR"
 #define PASSW_LEN 32
 #define AUDIT if(1)
 #define DEBUG
+
+// Definition of macros to map RF satte to numbers
+#define RF_ON           0
+#define RF_OFF          1
+#define RF_REC_ON       2
+#define RF_REC_OFF      3
+
 
 #ifdef DEBUG 
 #define CONDITIONAL if(0)
@@ -40,4 +49,5 @@ struct reference_monitor {
         blacklist_node *blacklist_head;             /**< Files to be protected */
         struct list_head blacklist_dir;         /**< Directories to be protected */
         spinlock_t lock;                        /**< Lock for synchronization */
+        int blacklist_size;
 };
