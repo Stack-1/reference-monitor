@@ -12,19 +12,6 @@ int main(int argc, char *argv[])
 {
     int ret = 0;
 
-    ret = syscall(ADD_TO_BLACKLIST, "/home/temp.txt", "1234");
-    if (ret == -1)
-    {
-        perror("...");
-        ret = EXIT_FAILURE;
-    }
-
-    ret = syscall(PRINT_BLACKLIST, 1);
-    if (ret == -1)
-    {
-        perror("...");
-        ret = EXIT_FAILURE;
-    }
 
     ret = syscall(GET_BLACKLIST_SIZE, 1);
     if (ret == -1)

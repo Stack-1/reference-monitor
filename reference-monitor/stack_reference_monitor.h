@@ -21,18 +21,6 @@
 #define CONDITIONAL if(1)
 #endif
 
-struct blacklist_entry {
-        struct list_head list;
-        char *path;
-        char *filename;
-        unsigned long inode_number;
-};
-
-struct blacklist_dir_entry {
-        struct list_head list;
-        char *path;
-};
-
 
 typedef struct blacklist_node{
         char *path;
@@ -47,7 +35,8 @@ struct reference_monitor {
         int state;                              /**< The state can be one of the following: OFF (0), ON (1), REC-OFF (2), REC-ON (3)*/
         char *password;                         /**< Password for Reference Monitor reconfiguration */
         blacklist_node *blacklist_head;             /**< Files to be protected */
-        struct list_head blacklist_dir;         /**< Directories to be protected */
         spinlock_t lock;                        /**< Lock for synchronization */
         int blacklist_size;
 };
+
+int is_blacklisted(char *path);

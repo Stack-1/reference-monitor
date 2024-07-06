@@ -82,83 +82,6 @@ out:
         return result;
 }
 
-char *get_full_path(const char *rel_path)
-{
-
-        char *k_full_path, *rel_path_tilde, *tilde_pos;
-        struct path path;
-        int ret;
-
-        if (rel_path[0] == '/')
-        {
-                return (char *)rel_path;
-        }
-
-        k_full_path = kmalloc(PATH_MAX, GFP_ATOMIC);
-        if (!k_full_path)
-        {
-                pr_err("%s: error in kmalloc (get_full_path)\n", MODNAME);
-                return NULL;
-        }
-
-        ret = kern_path(rel_path, LOOKUP_FOLLOW, &path);
-        if (ret == -ENOENT)
-        {
-                rel_path_tilde = kmalloc(PATH_MAX, GFP_ATOMIC);
-                if (!rel_path_tilde)
-                {
-                        pr_err("%s: error in kmalloc (rel_path_tilde)\n", MODNAME);
-                        return NULL;
-                }
-
-                strcpy(rel_path_tilde, rel_path);
-                strcat(rel_path_tilde, "~");
-
-                ret = kern_path(rel_path_tilde, LOOKUP_FOLLOW, &path);
-
-                kfree(rel_path_tilde);
-        }
-        if (ret)
-        {
-                pr_info("%s: full path not found (error %d) for file %s\n", MODNAME, ret, rel_path);
-                kfree(k_full_path);
-                return NULL;
-        }
-
-        ret = snprintf(k_full_path, PATH_MAX, "%s", d_path(&path, k_full_path, PATH_MAX));
-        if (ret < 0 || ret >= PATH_MAX)
-        {
-                kfree(k_full_path);
-                pr_err("%s: full path is too long\n", MODNAME);
-        }
-
-        tilde_pos = strrchr(k_full_path, '~');
-        if (tilde_pos != NULL)
-        {
-                *tilde_pos = '\0';
-        }
-
-        return k_full_path;
-}
-
-int is_directory(const char *path)
-{
-        struct path p;
-        int error;
-        struct inode *inode;
-
-        error = kern_path(path, LOOKUP_FOLLOW, &p);
-        if (error)
-        {
-                pr_err("%s: error in kern_path (is_directory)\n", MODNAME);
-                return 0;
-        }
-
-        inode = p.dentry->d_inode;
-
-        return S_ISDIR(inode->i_mode);
-}
-
 int is_rf_rec(struct reference_monitor *rf)
 {
         if (rf->state < 2)
@@ -211,9 +134,8 @@ int euid_check(kuid_t euid)
         return 0;
 }
 
-int rf_state_check(struct reference_monitor *rf)
+int rf_state_check(int state)
 {
-        int state = rf->state;
         // Check if RF state is compliant with the possible ones
         if (state < 0 || state > 3)
         {
@@ -221,4 +143,38 @@ int rf_state_check(struct reference_monitor *rf)
                 return -EINVAL;
         }
         return 0;
+}
+
+
+
+
+char *get_path_from_dentry(struct dentry *dentry) {
+
+	char *buffer, *full_path, *ret;
+        int len;
+
+        buffer = (char *)__get_free_page(GFP_ATOMIC);
+        if (!buffer)
+                return NULL;
+
+        ret = dentry_path_raw(dentry, buffer, PATH_MAX);
+        if (IS_ERR(ret)) {
+                pr_err("dentry_path_raw failed: %li", PTR_ERR(ret));
+                free_page((unsigned long)buffer);
+                return NULL;
+        } 
+
+        len = strlen(ret);
+
+        full_path = kmalloc(len + 2, GFP_ATOMIC);
+        if (!full_path) {
+                pr_err("%s: error in kmalloc allocation (get_path_from_dentry)\n", MODNAME);
+                return NULL;
+        }
+
+        strncpy(full_path, ret, len);
+        full_path[len + 1] = '\0';
+
+        free_page((unsigned long)buffer);
+        return full_path;
 }

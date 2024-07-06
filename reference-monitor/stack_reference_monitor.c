@@ -35,11 +35,13 @@
 #include <linux/spinlock.h>
 #include <linux/cred.h>
 #include <linux/file.h>
+#include <linux/fs_struct.h>
 
-#include "lib/include/scth.h"
+#include "syscall-mount/scth.h"
 #include "stack_reference_monitor.h"
 #include "utils/utils.h"
 #include "utils/blacklist.h"
+#include "kprobes/kprobes.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Staccone Simone <simone.staccone@virgilio.it>");
@@ -80,7 +82,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     int ret;
 
     // Check if the monitor state is admissible
-    ret = rf_state_check(&reference_monitor);
+    ret = rf_state_check(state);
     if (ret != 0)
     {
         return ret;
@@ -103,6 +105,15 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     spin_lock(&reference_monitor.lock);
     reference_monitor.state = state;
     spin_unlock(&reference_monitor.lock);
+
+    if (state == 0 || state == 2)
+    {
+        enable_kprobes();
+    }
+    else
+    {
+        disable_kprobes();
+    }
 
     AUDIT
     {
@@ -183,7 +194,9 @@ __SYSCALL_DEFINEx(2, _remove_from_blacklist, char *, relative_path, char *, pass
 #else
 asmlinkage long sys_remove_from_blacklist(char *relative_path, char *password)
 {
-        int ret;
+#endif
+
+    int ret;
 
     // Check if the reference monitor is in reconfiguration state
     ret = is_rf_rec(&reference_monitor);
@@ -214,8 +227,6 @@ asmlinkage long sys_remove_from_blacklist(char *relative_path, char *password)
     }
 
     return 0;
-    return 0;
-#endif
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
@@ -231,10 +242,11 @@ asmlinkage long sys_get_blacklist_size(void)
 __SYSCALL_DEFINEx(2, _print_blacklist, char *__user, files, char *__user, dirs, size_t, files_size, size_t, dirs_size)
 {
 #else
-asmlinkage long sys_print_blacklist(void)
+asmlinkage long sys_print_blacklist(int dummy)
 {
 #endif
-    blacklist_node *curr = reference_monitor.blacklist_head;
+    struct blacklist_node *curr = reference_monitor.blacklist_head;
+
     if (curr == NULL)
     {
         printk("Blacklist is empty\n");
@@ -261,6 +273,46 @@ long sys_print_blacklist = (unsigned long)__x64_sys_print_blacklist;
 long sys_get_blacklist_size = (unsigned long)__x64_sys_get_blacklist_size;
 #else
 #endif
+
+/**
+ *  Check if this file is blacklisted
+ *
+ *  @param filename filename, from which the file's full path is retrieved
+ *  @return 0 if is not in blacklist and 1 if the path is found
+ */
+int is_blacklisted(char *path)
+{
+    struct blacklist_node *curr;
+
+    if (reference_monitor.blacklist_size == 0)
+    {
+        return 0;
+    }
+    else if (reference_monitor.state == 1 || reference_monitor.state == 3)
+    {
+        return 0;
+    }
+    else
+    {
+        curr = reference_monitor.blacklist_head;
+
+        spin_lock(&reference_monitor.lock);
+        while (curr != NULL)
+        {
+            if (strncmp(path, curr->path,strlen(curr->path)) == 0)
+            {
+                spin_unlock(&reference_monitor.lock);
+
+                return 1;
+            }
+            curr = curr->next;
+        }
+
+        spin_unlock(&reference_monitor.lock);
+    }
+
+    return 0;
+}
 
 /**
  * @brief This function adds the new syscalls to the syscall table's free entries
@@ -352,10 +404,10 @@ int init_module(void)
         return ret;
     }
 
-    printk("%s: [INFO] Setting RF initial state to ON\n", MODNAME);
+    printk("%s: [INFO] Setting RF initial state to OFF\n", MODNAME);
 
     spin_lock(&reference_monitor.lock);
-    reference_monitor.state = 0;
+    reference_monitor.state = 1;
     reference_monitor.blacklist_head = NULL;
     reference_monitor.blacklist_size = 0;
     spin_unlock(&reference_monitor.lock);
@@ -365,6 +417,9 @@ int init_module(void)
     reference_monitor.password = enc_password;
 
     printk("%s: [INFO] Password entrypted and set correctly\n", MODNAME);
+
+    kretprobe_init();
+
     printk("%s: [INFO] Module correctly installed\n", MODNAME);
     return 0;
 }
@@ -385,6 +440,8 @@ void cleanup_module(void)
         ((unsigned long *)syscalls_table_address)[restore[i]] = the_ni_syscall;
     }
     protect_memory();
+
+    kretprobe_clean();
 
     AUDIT
     {
