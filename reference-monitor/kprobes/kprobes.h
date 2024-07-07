@@ -1,4 +1,5 @@
-#define NUM_KRETPROBES 1
+#define NUM_KRETPROBES 2
+
 
 struct probe_data {
         char *error_message;

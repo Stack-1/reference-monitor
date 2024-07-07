@@ -9,6 +9,7 @@
 
 // kretprobes structs
 struct kretprobe file_open;
+struct kretprobe file_delete;
 
 // kretprobes array
 struct kretprobe **kprobe_array;
@@ -28,25 +29,82 @@ static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 
 static int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
-    const struct path *path;
+    char error_message[256];
+    struct probe_data *probe_data;
+    struct path *path;
+    struct dentry *dentry;
+    char *full_path;
+    int flags;
+    struct file *file;
+
+    // x86-64 syscall calling convention: %rdi, %rsi, %rdx, %r10, %r8 and %r9.
+
+    // int vfs_open(const struct path *path, struct file *file)
+    //  path is the first parameter, it contains the dentry of the file.
+    path = (struct path *)regs->di;
+    dentry = path->dentry;
+    // inode = dentry->d_inode;
+    // pathname = dentry->d_name.name;
+
+    // flags is the fourth parameter
+    file = (struct file *)regs->si;
+    flags = file->f_flags;
+
+    // Check if the file is opened WRITE-ONLY or READ-WRITE
+    if (flags & O_WRONLY || flags & O_RDWR || flags & O_CREAT || flags & O_APPEND || flags & O_TRUNC)
+    {
+        full_path = get_path_from_dentry(dentry);
+        if (is_blacklisted(full_path) == 1)
+        {
+            printk("%s: [DEBUG] %s", MODNAME, full_path);
+            probe_data = (struct probe_data *)ri->data;
+            sprintf(error_message, "%s: [ERROR] vfs open on file %s blocked\n", MODNAME, full_path);
+            probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+            return 0;
+        }
+    }
+
+    // printk("%s: [DEBUG] %d %d %x %x %x --- path %s\n", MODNAME, (int)access_flags == 32768, (int)access_flags, access_flags & (O_RDWR | O_CREAT | O_APPEND), access_flags & (O_RDWR | O_CREAT | O_TRUNC), access_flags & (O_WRONLY | O_CREAT | O_TRUNC), get_path_from_dentry(dentry));
+
+    /*if (
+        !(access_flags & (O_WRONLY | O_CREAT | O_TRUNC)) ||
+        !(access_flags & (O_RDWR | O_CREAT | O_TRUNC)) ||
+        !(access_flags & O_RDWR) ||
+        !(access_flags & (O_RDWR | O_CREAT | O_APPEND)) ||
+        !(access_flags & (O_WRONLY | O_CREAT | O_APPEND)))*/
+
+    // if((int)access_flags != 32768) //Magic number for readonly
+
+    // full_path = get_path_from_dentry(dentry);
+    // printk("%s: [DEBUG] Full path %s %d \n", MODNAME, real_path, !(flags & O_RDWR) && !(flags & O_WRONLY) && !(flags & (O_CREAT | __O_TMPFILE | O_EXCL )));
+
+    /*if(!(flags & O_RDWR) && !(flags & O_WRONLY) && !(flags & (O_CREAT | __O_TMPFILE | O_EXCL )))
+    {
+
+    }*/
+
+    return 1;
+}
+
+static int may_delete_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
     struct dentry *dentry;
     char *full_path;
     char error_message[256];
     struct probe_data *probe_data;
 
-    path = (const struct path *)regs->di;
+    // dentry = (struct dentry *)regs->si;
 
-    dentry = path->dentry;
-    full_path = get_path_from_dentry(dentry);
+    /*full_path = get_path_from_dentry(dentry);
 
     if (is_blacklisted(full_path) == 1)
     {
-        printk("%s: [DEBUG] %s",MODNAME,full_path);
+        printk("%s: [DEBUG] %s", MODNAME, full_path);
         probe_data = (struct probe_data *)ri->data;
         sprintf(error_message, "%s: [ERROR] vfs open on file %s blocked\n", MODNAME, full_path);
         probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
         return 0;
-    }
+    }*/
 
     return 1;
 }
@@ -69,18 +127,15 @@ void enable_kprobes()
     {
         pr_err("%s: [ERROR] Probe array is null", MODNAME);
     }
-    enable_kretprobe(&file_open);
-
-    /*
-        for (i = 0; i < NUM_KRETPROBES; i++)
+    for (i = 0; i < NUM_KRETPROBES; i++)
+    {
+        ret = enable_kretprobe(kprobe_array[i]);
+        if (ret == -1)
         {
-            ret = enable_kretprobe(kprobe_array[i]);
-            if (ret == -1)
-            {
-                pr_err("%s: [INFO] Kretprobe enabling failed\n", MODNAME);
-            }
+            pr_err("%s: [INFO] Kretprobe enabling failed\n", MODNAME);
         }
-    */
+    }
+
     AUDIT
     {
         printk("%s: [INFO] Kretprobes enabled\n", MODNAME);
@@ -114,7 +169,7 @@ int kretprobe_init()
     set_kretprobe(&file_open, "vfs_open", (kretprobe_handler_t)open_entry_handler);
     // set_kretprobe(&file_read, "security_inode_link", (kretprobe_handler_t)inode_link_entry_handler);
     // set_kretprobe(&file_write, "security_inode_symlink", (kretprobe_handler_t)inode_symlink_entry_handler);
-    // set_kretprobe(&file_delete, "may_delete", (kretprobe_handler_t)may_delete_entry_handler);
+    set_kretprobe(&file_delete, "may_delete", (kretprobe_handler_t)may_delete_entry_handler);
     // set_kretprobe(&file_create, "security_inode_create", (kretprobe_handler_t)indoe_create_entry_handler);
     // set_kretprobe(&file_mkdir, "security_inode_mkdir", (kretprobe_handler_t)inode_mkdir_entry_handler);
 
@@ -127,6 +182,7 @@ int kretprobe_init()
     }
 
     kprobe_array[0] = &file_open;
+    kprobe_array[1] = &file_delete;
 
     ret = register_kretprobes(kprobe_array, NUM_KRETPROBES);
     if (ret != 0)

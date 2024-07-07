@@ -2,38 +2,33 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define SWITCH_STATE 134
-#define ADD_TO_BLACKLIST 174
-#define REMOVE_FROM_BLACKLIST 177
-#define PRINT_BLACKLIST 178
-#define GET_BLACKLIST_SIZE 180
-
 int main(int argc, char *argv[])
 {
     int ret = 0;
 
-    ret = syscall(ADD_TO_BLACKLIST, "/home/temp.txt", "1234");
+
+    ret = syscall(174, "/home/stack1/Desktop/temp.txt","1234");
     if (ret == -1)
     {
         perror("...");
-        ret = EXIT_FAILURE;
+        return EXIT_FAILURE;
     }
 
-    ret = syscall(PRINT_BLACKLIST, 1);
+    ret = syscall(178, 1);
     if (ret == -1)
     {
         perror("...");
-        ret = EXIT_FAILURE;
+        return EXIT_FAILURE;
     }
 
-    ret = syscall(GET_BLACKLIST_SIZE, 1);
+    ret = syscall(180, 1);
     if (ret == -1)
     {
         perror("...");
-        ret = EXIT_FAILURE;
+        return EXIT_FAILURE;
     }
-    printf("Blacklist size: %d\n", ret);
-    
+    printf("Blacklist size: %d\n",ret);
+
 
     return EXIT_SUCCESS;
 }
