@@ -299,11 +299,20 @@ int is_blacklisted(char *path)
         spin_lock(&reference_monitor.lock);
         while (curr != NULL)
         {
-            if (strncmp(path, curr->path,strlen(curr->path)) == 0)
+            if (strncmp(path, curr->path, strlen(curr->path)) == 0)
             {
                 spin_unlock(&reference_monitor.lock);
 
                 return 1;
+            }
+            else if (curr->path[strlen(curr->path)- 1] == '/') // Check if the last slash isn't added in path recognition
+            {
+                if (strncmp(path, curr->path, strlen(curr->path) -1 ) == 0)
+                {
+                    spin_unlock(&reference_monitor.lock);
+
+                    return 1;
+                }
             }
             curr = curr->next;
         }

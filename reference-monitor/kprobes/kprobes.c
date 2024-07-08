@@ -10,6 +10,10 @@
 // kretprobes structs
 struct kretprobe file_open;
 struct kretprobe file_delete;
+struct kretprobe file_create;
+struct kretprobe file_mkdir;
+struct kretprobe file_rename;
+struct kretprobe file_rmdir;
 
 // kretprobes array
 struct kretprobe **kprobe_array;
@@ -39,12 +43,8 @@ static int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *reg
 
     // x86-64 syscall calling convention: %rdi, %rsi, %rdx, %r10, %r8 and %r9.
 
-    // int vfs_open(const struct path *path, struct file *file)
-    //  path is the first parameter, it contains the dentry of the file.
     path = (struct path *)regs->di;
     dentry = path->dentry;
-    // inode = dentry->d_inode;
-    // pathname = dentry->d_name.name;
 
     // flags is the fourth parameter
     file = (struct file *)regs->si;
@@ -56,7 +56,6 @@ static int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *reg
         full_path = get_path_from_dentry(dentry);
         if (is_blacklisted(full_path) == 1)
         {
-            printk("%s: [DEBUG] %s", MODNAME, full_path);
             probe_data = (struct probe_data *)ri->data;
             sprintf(error_message, "%s: [ERROR] vfs open on file %s blocked\n", MODNAME, full_path);
             probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
@@ -64,47 +63,122 @@ static int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *reg
         }
     }
 
-    // printk("%s: [DEBUG] %d %d %x %x %x --- path %s\n", MODNAME, (int)access_flags == 32768, (int)access_flags, access_flags & (O_RDWR | O_CREAT | O_APPEND), access_flags & (O_RDWR | O_CREAT | O_TRUNC), access_flags & (O_WRONLY | O_CREAT | O_TRUNC), get_path_from_dentry(dentry));
+    return 1;
+}
 
-    /*if (
-        !(access_flags & (O_WRONLY | O_CREAT | O_TRUNC)) ||
-        !(access_flags & (O_RDWR | O_CREAT | O_TRUNC)) ||
-        !(access_flags & O_RDWR) ||
-        !(access_flags & (O_RDWR | O_CREAT | O_APPEND)) ||
-        !(access_flags & (O_WRONLY | O_CREAT | O_APPEND)))*/
+static int inode_unlink_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    char error_message[256];
+    struct probe_data *probe_data;
+    struct path *dir;
+    struct dentry *dentry;
+    char *full_path;
 
-    // if((int)access_flags != 32768) //Magic number for readonly
+    dir = (struct path *)regs->di;
+    dentry = (struct dentry *)regs->si;
 
-    // full_path = get_path_from_dentry(dentry);
-    // printk("%s: [DEBUG] Full path %s %d \n", MODNAME, real_path, !(flags & O_RDWR) && !(flags & O_WRONLY) && !(flags & (O_CREAT | __O_TMPFILE | O_EXCL )));
+    full_path = get_path_from_dentry(dentry);
 
-    /*if(!(flags & O_RDWR) && !(flags & O_WRONLY) && !(flags & (O_CREAT | __O_TMPFILE | O_EXCL )))
+    if (is_blacklisted(full_path) == 1)
     {
-
-    }*/
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Unlink on dir %s blocked\n", MODNAME, full_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }
 
     return 1;
 }
 
-static int may_delete_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+static int inode_create_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
     struct dentry *dentry;
     char *full_path;
     char error_message[256];
     struct probe_data *probe_data;
 
-    // dentry = (struct dentry *)regs->si;
+    dentry = (struct dentry *)regs->si;
 
-    /*full_path = get_path_from_dentry(dentry);
+    full_path = get_path_from_dentry(dentry);
 
     if (is_blacklisted(full_path) == 1)
     {
-        printk("%s: [DEBUG] %s", MODNAME, full_path);
         probe_data = (struct probe_data *)ri->data;
-        sprintf(error_message, "%s: [ERROR] vfs open on file %s blocked\n", MODNAME, full_path);
+        sprintf(error_message, "%s: [ERROR] Create on file %s blocked\n", MODNAME, full_path);
         probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
         return 0;
-    }*/
+    }
+
+    return 1;
+}
+
+static int inode_mkdir_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    struct dentry *dentry;
+    struct dentry *parent_dentry;
+    char *full_path;
+    char error_message[256];
+    struct probe_data *probe_data;
+
+    dentry = (struct dentry *)regs->si;
+
+    parent_dentry = dentry->d_parent;
+    full_path = get_path_from_dentry(dentry);
+
+    if (is_blacklisted(full_path) == 1)
+    {
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Mkdir on file %s blocked\n", MODNAME, full_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int inode_rename_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    struct dentry *dentry;
+    char *full_path;
+    char error_message[256];
+    struct probe_data *probe_data;
+
+    dentry = (struct dentry *)regs->si;
+
+    full_path = get_path_from_dentry(dentry);
+
+    if (is_blacklisted(full_path) == 1)
+    {
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Rename on file %s blocked\n", MODNAME, full_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int inode_rmdir_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    struct dentry *dentry;
+    struct dentry *parent_dentry;
+    char *full_path;
+    char error_message[256];
+    struct probe_data *probe_data;
+
+    dentry = (struct dentry *)regs->si;
+
+    parent_dentry = dentry->d_parent;
+    full_path = get_path_from_dentry(dentry);
+
+
+    if (is_blacklisted(full_path) == 1 || is_blacklisted(get_path_from_dentry(parent_dentry)) == 1)
+    {
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Rmdir on file %s blocked\n", MODNAME, full_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }
 
     return 1;
 }
@@ -167,11 +241,11 @@ int kretprobe_init()
 
     /* initialize all kretprobes */
     set_kretprobe(&file_open, "vfs_open", (kretprobe_handler_t)open_entry_handler);
-    // set_kretprobe(&file_read, "security_inode_link", (kretprobe_handler_t)inode_link_entry_handler);
-    // set_kretprobe(&file_write, "security_inode_symlink", (kretprobe_handler_t)inode_symlink_entry_handler);
-    set_kretprobe(&file_delete, "may_delete", (kretprobe_handler_t)may_delete_entry_handler);
-    // set_kretprobe(&file_create, "security_inode_create", (kretprobe_handler_t)indoe_create_entry_handler);
-    // set_kretprobe(&file_mkdir, "security_inode_mkdir", (kretprobe_handler_t)inode_mkdir_entry_handler);
+    set_kretprobe(&file_delete, "security_inode_unlink", (kretprobe_handler_t)inode_unlink_entry_handler);
+    set_kretprobe(&file_create, "security_inode_create", (kretprobe_handler_t)inode_create_entry_handler);
+    set_kretprobe(&file_mkdir, "security_inode_mkdir", (kretprobe_handler_t)inode_mkdir_entry_handler);
+    set_kretprobe(&file_rename, "security_inode_rename", (kretprobe_handler_t)inode_rename_entry_handler);
+    set_kretprobe(&file_rmdir, "security_inode_rmdir", (kretprobe_handler_t)inode_rmdir_entry_handler);
 
     /* kretprobes array allocation */
     kprobe_array = kmalloc(NUM_KRETPROBES * sizeof(struct kretprobe *), GFP_KERNEL);
@@ -183,6 +257,10 @@ int kretprobe_init()
 
     kprobe_array[0] = &file_open;
     kprobe_array[1] = &file_delete;
+    kprobe_array[2] = &file_create;
+    kprobe_array[3] = &file_mkdir;
+    kprobe_array[4] = &file_rename;
+    kprobe_array[5] = &file_rmdir;
 
     ret = register_kretprobes(kprobe_array, NUM_KRETPROBES);
     if (ret != 0)
