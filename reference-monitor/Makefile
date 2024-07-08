@@ -1,5 +1,5 @@
 obj-m += the_stack_reference_monitor.o
-the_stack_reference_monitor-objs += stack_reference_monitor.o syscall-mount/scth.o utils/utils.o utils/blacklist.o kprobes/kprobes.o 
+the_stack_reference_monitor-objs += stack_reference_monitor.o syscall-mount/scth.o utils/utils.o utils/blacklist.o kprobes/kprobes.o  log/logger.o
 
 
 all:

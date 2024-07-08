@@ -6,6 +6,7 @@
 #include "kprobes.h"
 #include "../stack_reference_monitor.h"
 #include "../utils/utils.h"
+#include "../log/logger.h"
 
 // kretprobes structs
 struct kretprobe file_open;
@@ -24,7 +25,7 @@ static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
     pr_err("%s", probe_data->error_message);
 
     regs->ax = -EACCES;
-    //  log_data();
+    write_on_log();
 
     kfree(probe_data->error_message);
 
