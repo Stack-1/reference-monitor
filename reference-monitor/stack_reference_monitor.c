@@ -231,11 +231,12 @@ asmlinkage long sys_remove_from_blacklist(char *relative_path, char *password)
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(1, _get_blacklist_size, int, dummy)
+{
 #else
 asmlinkage long sys_get_blacklist_size(void)
 {
-    return reference_monitor.blacklist_size;
 #endif
+    return reference_monitor.blacklist_size;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
@@ -305,9 +306,9 @@ int is_blacklisted(char *path)
 
                 return 1;
             }
-            else if (curr->path[strlen(curr->path)- 1] == '/') // Check if the last slash isn't added in path recognition
+            else if (curr->path[strlen(curr->path) - 1] == '/') // Check if the last slash isn't added in path recognition
             {
-                if (strncmp(path, curr->path, strlen(curr->path) -1 ) == 0)
+                if (strncmp(path, curr->path, strlen(curr->path) - 1) == 0)
                 {
                     spin_unlock(&reference_monitor.lock);
 
