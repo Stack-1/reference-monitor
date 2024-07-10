@@ -227,13 +227,13 @@ void deferred_work(unsigned long data)
         /* fingerprint (hash) computation */
         // hash = calc_fingerprint(log_data->exe_path);
         hash = SHA256(log_data->exe_path);
-        ;
+        
 
         /* string to be written to the log */
         snprintf(row, 256, "%d, %d, %u, %u, %s, %s\n", log_data->tid, log_data->tgid,
                  log_data->uid, log_data->euid, log_data->exe_path, hash);
 
-        printk("%s: [DEBUG] Row is %s\n", MODNAME, row);
+        printk("%s: [DEBUG] Row is %s", MODNAME, row);
 
         file = filp_open(LOG_FILE, O_WRONLY, 0644);
         if (IS_ERR(file))

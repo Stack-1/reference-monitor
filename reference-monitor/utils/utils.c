@@ -99,7 +99,8 @@ int password_check(char *password, struct reference_monitor *rf)
 {
         char *kernel_password;
         int ret;
-        kernel_password = kmalloc(PASSW_LEN, GFP_ATOMIC);
+
+        kernel_password = kmalloc(PASSW_LEN, GFP_KERNEL);
         if (!kernel_password)
         {
                 pr_err("%s: [ERROR] Error in kmalloc allocation for kernel password\n", MODNAME);
@@ -107,19 +108,8 @@ int password_check(char *password, struct reference_monitor *rf)
         }
 
 
-
-        ret = access_ok((void *)password,strlen(password));
-        if (!ret)
-        {
-                pr_err("%s: [ERROR] Error checking user space address passed as password, access_ok() returned 0\n", MODNAME);
-                kfree(kernel_password);
-                return -EAGAIN;
-        }
-
-
         // Use Cross-Ring Data Move to copy password from user to kernel space
         ret = copy_from_user(kernel_password, (void *)password, PASSW_LEN);
-
         if (ret)
         {
                 pr_err("%s: [ERROR] Error while copying password from user address space to kernel address space\n", MODNAME);
@@ -127,14 +117,15 @@ int password_check(char *password, struct reference_monitor *rf)
                 return -EAGAIN;
         }
 
-
-        if (strcmp(rf->password, encrypt_password(password)) != 0)
+        if (strcmp(rf->password, encrypt_password(kernel_password)) != 0)
         {
                 pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);
                 kfree(kernel_password);
                 return -EACCES;
         }
+
         kfree(kernel_password);
+
         return 0;
 }
 

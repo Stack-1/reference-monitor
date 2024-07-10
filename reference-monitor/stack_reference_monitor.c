@@ -118,7 +118,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     AUDIT
     {
         // Debug to print the correct state of the RF as string
-        state_string = kmalloc(sizeof(char) * 16, GFP_KERNEL); // GFP_KERNEL?
+        state_string = kmalloc(sizeof(char *) * 16, GFP_KERNEL);
         if (!state_string)
         {
             pr_err("%s: [ERROR] Error in kmalloc allocation while reserving memory for RF satte string to debug in kernel space\n", MODNAME);

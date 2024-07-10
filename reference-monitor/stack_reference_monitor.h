@@ -7,7 +7,7 @@
 #define PASSW_LEN 32
 #define AUDIT if(1)
 #define DEBUG
-#define LOG_FILE "/home/stack1/Desktop/reference-monitor/log-filesystem/mount/ref_monitor_log.txt"
+#define LOG_FILE "/home/stack1/reference-monitor/log-filesystem/mount/ref_monitor_log.txt"
 
 // Definition of macros to map RF satte to numbers
 #define RF_ON           0

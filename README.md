@@ -21,10 +21,10 @@
 
 
 
-This is a project developed for the Advanced Operating Systems class in Tor Vergata University, In particular the goal of the project is to implement a Kernel module for Linux Kernel to setup a reference monitor that handles a file system.
+This is a project developed for the Advanced Operating Systems class in Tor Vergata University, In particular the goal of the project is to implement a Kernel module for Linux OS using x86 processors to setup a reference monitor that handles a file system.
 
 ## Introduction
-....
+The main goal of this project is to implement a reference monitor to prevent any type of modification on files or directories specified in a blackilist.
 ## Project Specification
 This specification is related to a Linux Kernel Module (LKM) implementing a reference monitor for file protection. The reference monitor can be in one of the following four states:
 
@@ -50,6 +50,12 @@ In addition to the above specifics, the project should also include the realizat
 The the computation of the cryptographic hash and the writing of the above tuple should be carried in deferred work. 
 
 ## Getting Started
-...
+The project is composed of three main modules:
+- **Systemcall table discoverer** (syscall-table-discoverer/)
+This module implements the search for the systemcall table using informations about the entries that points to ni_sy_syscall (address to identify a free entry). Nowing where those entries are it is possible to identify the address of the systemcall table, starting from the lower half of the canonical adressing scheme for 64-bit processors (0xfffffffffffff000) and iterate untill we find the addresses of the dummy syscall in the correct offsets.
+
+NOTE: This module works only for some kernel versions, in particular it doesn't work for kernel 5.15.0-103-generico or higher (>= 103) or for kernel 6.5. It works fine with kernel 4.15, 5.15.0-102-generic and lower (<= 102) and 6.2. Further testing should be done to have more general results.
+- **Filesystem for loggging** (log-filesystem/)
+- **Reference Monitor** (reference-monitor/)
 ## Conclusion
 ...
