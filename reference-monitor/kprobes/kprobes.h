@@ -1,4 +1,4 @@
-#define NUM_KRETPROBES 6
+#define NUM_KRETPROBES 10
 
 
 struct probe_data {

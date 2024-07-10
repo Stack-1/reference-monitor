@@ -9,6 +9,8 @@
 #include <linux/file.h>
 #include <crypto/hash.h>
 #include <linux/errno.h>
+#include <linux/mm.h>
+#include <linux/module.h>
 
 #include "../stack_reference_monitor.h"
 
@@ -96,24 +98,37 @@ int is_rf_rec(struct reference_monitor *rf)
 int password_check(char *password, struct reference_monitor *rf)
 {
         char *kernel_password;
-        kernel_password = kmalloc(PASSW_LEN, GFP_KERNEL);
+        int ret;
+        kernel_password = kmalloc(PASSW_LEN, GFP_ATOMIC);
         if (!kernel_password)
         {
                 pr_err("%s: [ERROR] Error in kmalloc allocation for kernel password\n", MODNAME);
                 return -ENOMEM;
         }
 
+
+
+        ret = access_ok((void *)password,strlen(password));
+        if (!ret)
+        {
+                pr_err("%s: [ERROR] Error checking user space address passed as password, access_ok() returned 0\n", MODNAME);
+                kfree(kernel_password);
+                return -EAGAIN;
+        }
+
+
         // Use Cross-Ring Data Move to copy password from user to kernel space
-        if (copy_from_user(kernel_password, password, PASSW_LEN))
+        ret = copy_from_user(kernel_password, (void *)password, PASSW_LEN);
+
+        if (ret)
         {
                 pr_err("%s: [ERROR] Error while copying password from user address space to kernel address space\n", MODNAME);
                 kfree(kernel_password);
                 return -EAGAIN;
         }
 
-        // if requested state is REC-ON or REC-OFF, check password
 
-        if (strcmp(rf->password, encrypt_password(kernel_password)) != 0)
+        if (strcmp(rf->password, encrypt_password(password)) != 0)
         {
                 pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);
                 kfree(kernel_password);
@@ -145,12 +160,10 @@ int rf_state_check(int state)
         return 0;
 }
 
+char *get_path_from_dentry(struct dentry *dentry)
+{
 
-
-
-char *get_path_from_dentry(struct dentry *dentry) {
-
-	char *buffer, *full_path, *ret;
+        char *buffer, *full_path, *ret;
         int len;
 
         buffer = (char *)__get_free_page(GFP_ATOMIC);
@@ -158,16 +171,18 @@ char *get_path_from_dentry(struct dentry *dentry) {
                 return NULL;
 
         ret = dentry_path_raw(dentry, buffer, PATH_MAX);
-        if (IS_ERR(ret)) {
+        if (IS_ERR(ret))
+        {
                 pr_err("dentry_path_raw failed: %li", PTR_ERR(ret));
                 free_page((unsigned long)buffer);
                 return NULL;
-        } 
+        }
 
         len = strlen(ret);
 
         full_path = kmalloc(len + 2, GFP_ATOMIC);
-        if (!full_path) {
+        if (!full_path)
+        {
                 pr_err("%s: error in kmalloc allocation (get_path_from_dentry)\n", MODNAME);
                 return NULL;
         }

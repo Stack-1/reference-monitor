@@ -15,6 +15,10 @@ struct kretprobe file_create;
 struct kretprobe file_mkdir;
 struct kretprobe file_rename;
 struct kretprobe file_rmdir;
+struct kretprobe file_link;
+struct kretprobe file_symlink;
+struct kretprobe file_write;
+struct kretprobe file_lseek;
 
 // kretprobes array
 struct kretprobe **kprobe_array;
@@ -36,19 +40,18 @@ static int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *reg
 {
     char error_message[256];
     struct probe_data *probe_data;
-    struct path *path;
+    struct path path;
     struct dentry *dentry;
+    struct file *file;
     char *full_path;
     int flags;
-    struct file *file;
 
-    // x86-64 syscall calling convention: %rdi, %rsi, %rdx, %r10, %r8 and %r9.
-
-    path = (struct path *)regs->di;
-    dentry = path->dentry;
 
     // flags is the fourth parameter
-    file = (struct file *)regs->si;
+    file = (struct file *)regs->di;
+
+    path = file->f_path;
+    dentry = path.dentry;
     flags = file->f_flags;
 
     // Check if the file is opened WRITE-ONLY or READ-WRITE
@@ -67,15 +70,66 @@ static int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *reg
     return 1;
 }
 
+static int inode_link_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    char error_message[256];
+    struct probe_data *probe_data;
+    struct dentry *old_dentry;
+    struct dentry *dentry;
+    char *full_old_path;
+    char *full_path;
+
+    old_dentry = (struct dentry *)regs->di;
+    dentry = (struct dentry *)regs->dx;
+
+    full_old_path = get_path_from_dentry(old_dentry);
+    full_path = get_path_from_dentry(dentry);
+
+    if (is_blacklisted(full_old_path) == 1)
+    {
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Link on dir %s blocked\n", MODNAME, full_old_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }else if(is_blacklisted(full_path) == 1){
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Link on dir %s blocked\n", MODNAME, full_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int inode_symlink_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    char error_message[256];
+    struct probe_data *probe_data;
+    struct dentry *dentry;
+    char *full_path;
+
+    dentry = (struct dentry *)regs->si;
+
+    full_path = get_path_from_dentry(dentry);
+
+    if (is_blacklisted(full_path) == 1)
+    {
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Unlink on dir %s blocked\n", MODNAME, full_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }
+
+    return 1;
+}
+
 static int inode_unlink_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
     char error_message[256];
     struct probe_data *probe_data;
-    struct path *dir;
     struct dentry *dentry;
     char *full_path;
 
-    dir = (struct path *)regs->di;
     dentry = (struct dentry *)regs->si;
 
     full_path = get_path_from_dentry(dentry);
@@ -139,22 +193,35 @@ static int inode_mkdir_entry_handler(struct kretprobe_instance *ri, struct pt_re
 
 static int inode_rename_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
-    struct dentry *dentry;
-    char *full_path;
     char error_message[256];
     struct probe_data *probe_data;
+    struct dentry *old_dentry;
+    struct dentry *dentry;
+    char *full_old_path;
+    char *full_path;
 
-    dentry = (struct dentry *)regs->si;
+    old_dentry = (struct dentry *)regs->si;
+    dentry = (struct dentry *)regs->cx;
 
-    full_path = get_path_from_dentry(dentry);
 
-    if (is_blacklisted(full_path) == 1)
+    full_old_path = get_path_from_dentry(old_dentry);
+    full_path = get_path_from_dentry(dentry);   
+
+
+    if (is_blacklisted(full_old_path) == 1)
     {
         probe_data = (struct probe_data *)ri->data;
-        sprintf(error_message, "%s: [ERROR] Rename on file %s blocked\n", MODNAME, full_path);
+        sprintf(error_message, "%s: [ERROR] Rename on dir %s blocked\n", MODNAME, full_old_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }else if(is_blacklisted(full_path) == 1){
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Link on dir %s blocked\n", MODNAME, full_path);
         probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
         return 0;
     }
+
+
 
     return 1;
 }
@@ -172,11 +239,64 @@ static int inode_rmdir_entry_handler(struct kretprobe_instance *ri, struct pt_re
     parent_dentry = dentry->d_parent;
     full_path = get_path_from_dentry(dentry);
 
-
     if (is_blacklisted(full_path) == 1 || is_blacklisted(get_path_from_dentry(parent_dentry)) == 1)
     {
         probe_data = (struct probe_data *)ri->data;
         sprintf(error_message, "%s: [ERROR] Rmdir on file %s blocked\n", MODNAME, full_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int vfs_write_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    struct dentry *dentry;
+    struct file *file;
+    char *full_path;
+    char error_message[256];
+    struct probe_data *probe_data;
+    struct path path;
+
+    file = (struct file *)regs->di;
+
+    path = file->f_path;
+    dentry = path.dentry;
+
+    full_path = get_path_from_dentry(dentry);
+
+    if (is_blacklisted(full_path) == 1)
+    {
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Write on file %s blocked\n", MODNAME, full_path);
+        probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int vfs_lseek_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+{
+    struct dentry *dentry;
+    struct file *file;
+    char *full_path;
+    char error_message[256];
+    struct probe_data *probe_data;
+    struct path path;
+
+    file = (struct file *)regs->di;
+
+    path = file->f_path;
+    dentry = path.dentry;
+
+    full_path = get_path_from_dentry(dentry);
+
+    if (is_blacklisted(full_path) == 1)
+    {
+        probe_data = (struct probe_data *)ri->data;
+        sprintf(error_message, "%s: [ERROR] Lseek on file %s blocked\n", MODNAME, full_path);
         probe_data->error_message = kstrdup(error_message, GFP_KERNEL);
         return 0;
     }
@@ -241,12 +361,18 @@ int kretprobe_init()
     int ret;
 
     /* initialize all kretprobes */
-    set_kretprobe(&file_open, "vfs_open", (kretprobe_handler_t)open_entry_handler);
+    set_kretprobe(&file_open, "security_file_open", (kretprobe_handler_t)open_entry_handler);
     set_kretprobe(&file_delete, "security_inode_unlink", (kretprobe_handler_t)inode_unlink_entry_handler);
+    set_kretprobe(&file_link, "security_inode_link", (kretprobe_handler_t)inode_link_entry_handler);
+    set_kretprobe(&file_symlink, "security_inode_symlink", (kretprobe_handler_t)inode_symlink_entry_handler);
+
     set_kretprobe(&file_create, "security_inode_create", (kretprobe_handler_t)inode_create_entry_handler);
     set_kretprobe(&file_mkdir, "security_inode_mkdir", (kretprobe_handler_t)inode_mkdir_entry_handler);
     set_kretprobe(&file_rename, "security_inode_rename", (kretprobe_handler_t)inode_rename_entry_handler);
     set_kretprobe(&file_rmdir, "security_inode_rmdir", (kretprobe_handler_t)inode_rmdir_entry_handler);
+
+    set_kretprobe(&file_write, "vfs_write", (kretprobe_handler_t)vfs_write_entry_handler);
+    set_kretprobe(&file_lseek, "vfs_llseek", (kretprobe_handler_t)vfs_lseek_entry_handler);
 
     /* kretprobes array allocation */
     kprobe_array = kmalloc(NUM_KRETPROBES * sizeof(struct kretprobe *), GFP_KERNEL);
@@ -262,6 +388,10 @@ int kretprobe_init()
     kprobe_array[3] = &file_mkdir;
     kprobe_array[4] = &file_rename;
     kprobe_array[5] = &file_rmdir;
+    kprobe_array[6] = &file_link;
+    kprobe_array[7] = &file_symlink;
+    kprobe_array[8] = &file_write;
+    kprobe_array[9] = &file_lseek;
 
     ret = register_kretprobes(kprobe_array, NUM_KRETPROBES);
     if (ret != 0)

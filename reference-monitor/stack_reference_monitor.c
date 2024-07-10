@@ -149,7 +149,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
 
 /* update state syscall */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(2, _add_to_blacklist, char *, relative_path, char *, passowrd)
+__SYSCALL_DEFINEx(2, _add_to_blacklist, char *, relative_path, char *, password)
 {
 #else
 asmlinkage long sys_add_to_blacklist(char *relative_path, char *password)
@@ -170,6 +170,7 @@ asmlinkage long sys_add_to_blacklist(char *relative_path, char *password)
     {
         return ret;
     }
+    printk("%s: [DEBUG] CUID %u\n", MODNAME, current_uid().val);
 
     // Check if the user is running as root
     ret = euid_check(current_euid());
@@ -240,7 +241,7 @@ asmlinkage long sys_get_blacklist_size(void)
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(2, _print_blacklist, char *__user, files, char *__user, dirs, size_t, files_size, size_t, dirs_size)
+__SYSCALL_DEFINEx(1, _print_blacklist, int, dummy)
 {
 #else
 asmlinkage long sys_print_blacklist(int dummy)

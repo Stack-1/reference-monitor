@@ -221,7 +221,6 @@ void deferred_work(unsigned long data)
         struct file *file;
         ssize_t ret;
 
-
         the_work = container_of((void *)data, packed_work, the_work);
         log_data = the_work->log_data;
 
@@ -234,7 +233,7 @@ void deferred_work(unsigned long data)
         snprintf(row, 256, "%d, %d, %u, %u, %s, %s\n", log_data->tid, log_data->tgid,
                  log_data->uid, log_data->euid, log_data->exe_path, hash);
 
-        printk("%s: [DEBUG] Row is %s\n",MODNAME,row);
+        printk("%s: [DEBUG] Row is %s\n", MODNAME, row);
 
         file = filp_open(LOG_FILE, O_WRONLY, 0644);
         if (IS_ERR(file))
@@ -268,9 +267,6 @@ void write_on_log(void)
         char *exe_path;
         packed_work *def_work;
 
-        spin_lock(&def_work_lock);
-
-        /* allocate a struct log_data, to gather all data to be logged */
         log_data = kmalloc(sizeof(struct log_data), GFP_KERNEL);
         if (!log_data)
         {
@@ -278,6 +274,9 @@ void write_on_log(void)
                 spin_unlock(&def_work_lock);
                 return;
         }
+        printk("%s: [DEBUG] CUID %u\n", MODNAME, current_uid().val);
+
+        spin_lock(&def_work_lock);
 
         /* get path of the offending program */
         mm = current->mm;
