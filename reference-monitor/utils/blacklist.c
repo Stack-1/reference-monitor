@@ -91,23 +91,23 @@ int add_to_blacklist(char *path, struct reference_monitor *rf)
 
 int remove_from_blacklist(char *path, struct reference_monitor *rf)
 {
-    char *kernel_rel_path;
+    char *kernel_path;
     blacklist_node *curr;
     blacklist_node *prev;
     int ret;
 
-    kernel_rel_path = kmalloc(PATH_MAX, GFP_KERNEL);
-    if (!kernel_rel_path)
+    kernel_path = kmalloc(PATH_MAX, GFP_KERNEL);
+    if (!kernel_path)
     {
         pr_err("%s: [ERROR] Error in kmalloc allocation\n", MODNAME);
         return -ENOMEM;
     }
 
-    ret = copy_from_user(kernel_rel_path, path, PATH_MAX);
+    ret = copy_from_user(kernel_path, path, PATH_MAX);
     if (ret == -1)
     {
         pr_err("%s: [ERROR] Error in copy_from_user (return value %d)\n", MODNAME, ret);
-        kfree(kernel_rel_path);
+        kfree(kernel_path);
         return -EAGAIN;
     }
 
@@ -120,7 +120,7 @@ int remove_from_blacklist(char *path, struct reference_monitor *rf)
     }
     else if (curr->next == NULL)
     {
-        if (strcmp(curr->path, kernel_rel_path) == 0)
+        if (strcmp(curr->path, kernel_path) == 0)
         {
             rf->blacklist_head = NULL;
             rf->blacklist_size = 0;
@@ -132,10 +132,11 @@ int remove_from_blacklist(char *path, struct reference_monitor *rf)
     {
         prev = curr;
         curr = curr->next;
-        if (strcmp(curr->path, kernel_rel_path) == 0)
+        if (strcmp(curr->path, kernel_path) == 0)
         {
             prev = curr->next->next;
             curr = NULL;
+            rf->blacklist_size--;
             goto found;
         }
 
@@ -143,27 +144,25 @@ int remove_from_blacklist(char *path, struct reference_monitor *rf)
         {
             prev = curr;
             curr = curr->next;
-            if (strcmp(curr->path, kernel_rel_path) == 0)
+            if (strcmp(curr->path, kernel_path) == 0)
             {
                 prev = curr->next->next;
                 curr = NULL;
+                rf->blacklist_size--;
                 goto found;
             }
         }
     }
 
-    rf->blacklist_size--;
+not_found:
     spin_unlock(&rf->lock);
-
-    
+    printk("%s: [INFO] Path %s not found in blacklist", MODNAME, kernel_path);
+    kfree(kernel_path);
+    return -EINVAL;
 
 found:
-    printk("%s: [INFO] Path %s removed succesfully to blacklist", MODNAME, kernel_rel_path);
-    kfree(kernel_rel_path);
+    spin_unlock(&rf->lock);
+    printk("%s: [INFO] Path %s removed succesfully to blacklist", MODNAME, kernel_path);
+    kfree(kernel_path);
     return 0;
-
-not_found:
-    printk("%s: [INFO] Path %s not found in blacklist", MODNAME, kernel_rel_path);
-    kfree(kernel_rel_path);
-    return -EINVAL;
 }

@@ -12,6 +12,7 @@ clean:
 
 mount: 
 	$(MAKE) syscall-table-discoverer/ mount
+	$(MAKE) log-filesystem/ mount
 	$(MAKE) reference-monitor/ mount
 
 unmount:

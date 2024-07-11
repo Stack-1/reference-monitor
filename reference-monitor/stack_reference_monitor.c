@@ -94,7 +94,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     {
         return ret;
     }
-
+ 
     // Check if the user is running as root
     ret = euid_check(current_euid());
     if (ret != 0)
@@ -149,10 +149,10 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
 
 /* update state syscall */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(2, _add_to_blacklist, char *, relative_path, char *, password)
+__SYSCALL_DEFINEx(2, _add_to_blacklist, char *, path, char *, password)
 {
 #else
-asmlinkage long sys_add_to_blacklist(char *relative_path, char *password)
+asmlinkage long sys_add_to_blacklist(char *path, char *password)
 {
 #endif
     int ret;
@@ -170,7 +170,6 @@ asmlinkage long sys_add_to_blacklist(char *relative_path, char *password)
     {
         return ret;
     }
-    printk("%s: [DEBUG] CUID %u\n", MODNAME, current_uid().val);
 
     // Check if the user is running as root
     ret = euid_check(current_euid());
@@ -180,7 +179,7 @@ asmlinkage long sys_add_to_blacklist(char *relative_path, char *password)
     }
 
     // Try to add to blacklist a new path
-    ret = add_to_blacklist(relative_path, &reference_monitor);
+    ret = add_to_blacklist(path, &reference_monitor);
     if (ret != 0)
     {
         return ret;
@@ -190,10 +189,10 @@ asmlinkage long sys_add_to_blacklist(char *relative_path, char *password)
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(2, _remove_from_blacklist, char *, relative_path, char *, passowrd)
+__SYSCALL_DEFINEx(2, _remove_from_blacklist, char *, path, char *, password)
 {
 #else
-asmlinkage long sys_remove_from_blacklist(char *relative_path, char *password)
+asmlinkage long sys_remove_from_blacklist(char *path, char *password)
 {
 #endif
 
@@ -221,7 +220,7 @@ asmlinkage long sys_remove_from_blacklist(char *relative_path, char *password)
     }
 
     // Try to add to blacklist a new path
-    ret = remove_from_blacklist(relative_path, &reference_monitor);
+    ret = remove_from_blacklist(path, &reference_monitor);
     if (ret != 0)
     {
         return ret;

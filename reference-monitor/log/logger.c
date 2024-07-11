@@ -20,11 +20,6 @@
 
 spinlock_t def_work_lock;
 
-/*****Please include following header files*****/
-// stdio.h
-// stdlib.h
-// string.h
-/***********************************************/
 
 #define uchar unsigned char
 #define uint unsigned int
@@ -224,8 +219,6 @@ void deferred_work(unsigned long data)
         the_work = container_of((void *)data, packed_work, the_work);
         log_data = the_work->log_data;
 
-        /* fingerprint (hash) computation */
-        // hash = calc_fingerprint(log_data->exe_path);
         hash = SHA256(log_data->exe_path);
         
 
@@ -233,7 +226,6 @@ void deferred_work(unsigned long data)
         snprintf(row, 256, "%d, %d, %u, %u, %s, %s\n", log_data->tid, log_data->tgid,
                  log_data->uid, log_data->euid, log_data->exe_path, hash);
 
-        printk("%s: [DEBUG] Row is %s", MODNAME, row);
 
         file = filp_open(LOG_FILE, O_WRONLY, 0644);
         if (IS_ERR(file))
