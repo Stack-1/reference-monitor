@@ -104,7 +104,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent)
 static void singlefilefs_kill_superblock(struct super_block *s)
 {
     kill_block_super(s);
-    printk(KERN_INFO "%s: singlefilefs unmount succesful.\n", MOD_NAME);
+    printk(KERN_INFO "%s: [INFO] Singlefilefs unmount succesful.\n", MOD_NAME);
     return;
 }
 
@@ -117,9 +117,9 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     ret = mount_bdev(fs_type, flags, dev_name, data, singlefilefs_fill_super);
 
     if (unlikely(IS_ERR(ret)))
-        printk("%s: error mounting onefilefs", MOD_NAME);
+        pr_err("%s: [ERROR] Error mounting onefilefs", MOD_NAME);
     else
-        printk("%s: singlefilefs is succesfully mounted on from device %s\n", MOD_NAME, dev_name);
+        printk("%s: [INFO] singlefilefs is succesfully mounted on from device %s\n", MOD_NAME, dev_name);
 
     return ret;
 }
@@ -140,9 +140,9 @@ static int singlefilefs_init(void)
     // register filesystem
     ret = register_filesystem(&onefilefs_type);
     if (likely(ret == 0))
-        printk("%s: sucessfully registered singlefilefs\n", MOD_NAME);
+        printk("%s: [INFO] Sucessfully registered singlefilefs\n", MOD_NAME);
     else
-        printk("%s: failed to register singlefilefs - error %d", MOD_NAME, ret);
+        pr_err("%s: [ERROR] Failed to register singlefilefs - error %d", MOD_NAME, ret);
 
     mutex_init(&mutex);
 
@@ -158,9 +158,9 @@ static void singlefilefs_exit(void)
     ret = unregister_filesystem(&onefilefs_type);
 
     if (likely(ret == 0))
-        printk("%s: sucessfully unregistered file system driver\n", MOD_NAME);
+        printk("%s: [INFO] Sucessfully unregistered file system driver\n", MOD_NAME);
     else
-        printk("%s: failed to unregister singlefilefs driver - error %d", MOD_NAME, ret);
+        pr_err("%s: [ERROR] Failed to unregister singlefilefs driver %d", MOD_NAME, ret);
 
     mutex_destroy(&mutex);
 }

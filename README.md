@@ -73,5 +73,11 @@ The first thing done in this module is the syscall table hacking adding four dif
 
 ## Getting Started
 To compile and run this project firstly disable the secure boot or sign the modules used with a valid CA sign. Secondly you can follow the automatic installation or the manual one:
-- Automatic install
-- Manual install
+- Automatic install: Exec 
+```bat
+bash ./launc.sh 
+```  
+and it should compile and mount all 3 modules asking only for root password and the password of the reference monitor to insert. 
+- Manual install: You can both use make, make mount from the ```reference-monitro/``` directory or you can navigate in each sub-directory and use make to compile and mount simultaniously.
+
+Next, you can use the files in reference-monitor/``` reference-monitor/user/``` to try some functionalities to check if the system is working correctly. Or you can also check the ```reference-monitor/tests/``` directory for some bash files that automatically excecute some tests.

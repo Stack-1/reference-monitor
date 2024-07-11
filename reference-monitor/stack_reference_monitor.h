@@ -1,3 +1,6 @@
+#ifndef RF_MONITOR
+#define RF_MONITOR
+
 #include <asm/atomic.h>
 #include <linux/limits.h>
 
@@ -41,3 +44,4 @@ struct reference_monitor {
 };
 
 int is_blacklisted(char *path);
+#endif

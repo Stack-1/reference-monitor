@@ -23,6 +23,9 @@ struct kretprobe file_lseek;
 // kretprobes array
 struct kretprobe **kprobe_array;
 
+/* Registers saved on stack as arguments are rdx,rsi,rcx,r8.r9, ... in x86 */
+
+
 static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
     struct probe_data *probe_data = (struct probe_data *)ri->data;
@@ -47,7 +50,6 @@ static int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *reg
     int flags;
 
 
-    // flags is the fourth parameter
     file = (struct file *)regs->di;
 
     path = file->f_path;
@@ -327,7 +329,7 @@ void enable_kprobes()
         ret = enable_kretprobe(kprobe_array[i]);
         if (ret == -1)
         {
-            pr_err("%s: [INFO] Kretprobe enabling failed\n", MODNAME);
+            pr_err("%s: [ERROR] Kretprobe enabling failed\n", MODNAME);
         }
     }
 
@@ -346,7 +348,7 @@ void disable_kprobes()
         ret = disable_kretprobe(kprobe_array[i]);
         if (ret == -1)
         {
-            pr_err("%s: [INFO] Kretprobe disabling failed\n", MODNAME);
+            pr_err("%s: [ERROR] Kretprobe disabling failed\n", MODNAME);
         }
     }
 

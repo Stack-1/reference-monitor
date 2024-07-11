@@ -47,10 +47,10 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Staccone Simone <simone.staccone@virgilio.it>");
 MODULE_DESCRIPTION("STACK-REFERENCE-MONITOR");
 
-/* reference monitor struct */
+// reference monitor struct
 struct reference_monitor reference_monitor;
 
-/* reference monitor password, to be checked when switching to states REC-ON and REC-OFF */
+// reference monitor password, to be checked when switching to states REC-ON and REC-OFF
 char password[PASSW_LEN];
 module_param_string(password, password, PASSW_LEN, 0);
 
@@ -63,14 +63,14 @@ unsigned long new_sys_call_array[] = {0x0, 0x0, 0x0, 0x0, 0x0};                 
 #define HACKED_ENTRIES (int)(sizeof(new_sys_call_array) / sizeof(unsigned long)) /* number of entries to be hacked */
 int restore[HACKED_ENTRIES] = {[0 ...(HACKED_ENTRIES - 1)] - 1};                 /* array of free entries on the syscall table */
 
-/* syscall codes */
+// syscall codes
 int switch_state_code;
 int add_to_blacklist_code;
 int remove_from_blacklist_code;
 int print_blacklist_code;
 int get_blacklist_size_code;
 
-/* update RF state syscall */
+// update RF state syscall
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(2, _switch_rf_state, int, state, char *, password)
 {
@@ -94,7 +94,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     {
         return ret;
     }
- 
+
     // Check if the user is running as root
     ret = euid_check(current_euid());
     if (ret != 0)
@@ -147,7 +147,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     return reference_monitor.state;
 }
 
-/* update state syscall */
+// Add to blacklist syscall
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(2, _add_to_blacklist, char *, path, char *, password)
 {
@@ -188,6 +188,7 @@ asmlinkage long sys_add_to_blacklist(char *path, char *password)
     return 0;
 }
 
+// Remove from blacklist syscall
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(2, _remove_from_blacklist, char *, path, char *, password)
 {
@@ -229,6 +230,7 @@ asmlinkage long sys_remove_from_blacklist(char *path, char *password)
     return 0;
 }
 
+// Get blacklist size syscall
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(1, _get_blacklist_size, int, dummy)
 {
@@ -239,6 +241,7 @@ asmlinkage long sys_get_blacklist_size(void)
     return reference_monitor.blacklist_size;
 }
 
+// Print blacklist syscall
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(1, _print_blacklist, int, dummy)
 {
@@ -276,9 +279,8 @@ long sys_get_blacklist_size = (unsigned long)__x64_sys_get_blacklist_size;
 #endif
 
 /**
- *  Check if this file is blacklisted
- *
- *  @param filename filename, from which the file's full path is retrieved
+ *  @brief Check if this file is blacklisted
+ *  @param path The pathname to check if it is found in the blacklist
  *  @return 0 if is not in blacklist and 1 if the path is found
  */
 int is_blacklisted(char *path)
@@ -324,8 +326,9 @@ int is_blacklisted(char *path)
     return 0;
 }
 
+
 /**
- * @brief This function adds the new syscalls to the syscall table's free entries
+ *  @brief This function adds the new syscalls to the syscall table's free entries
  */
 int initialize_syscalls(void)
 {
@@ -343,7 +346,7 @@ int initialize_syscalls(void)
         printk("%s: [INFO] Initializing - hacked entries %d\n", MODNAME, HACKED_ENTRIES);
     }
 
-    AUDIT
+    CONDITIONAL
     {
         printk("%s: [DEBUG] New system call address points to 0x%p", MODNAME, (void *)new_sys_call_array[0]);
     }
@@ -354,7 +357,7 @@ int initialize_syscalls(void)
     new_sys_call_array[3] = (unsigned long)sys_print_blacklist;
     new_sys_call_array[4] = (unsigned long)sys_get_blacklist_size;
 
-    AUDIT
+    CONDITIONAL
     {
         printk("%s: [DEBUG] New system call address points to 0x%p", MODNAME, (void *)new_sys_call_array[0]);
     }
@@ -378,11 +381,14 @@ int initialize_syscalls(void)
 
     protect_memory();
 
-    AUDIT
+    CONDITIONAL
     {
         printk("%s: [DEBUG] Syscall table restore 0 is %d", MODNAME, restore[0]);
         printk("%s: [DEBUG] Syscall table entry point to 0x%p", MODNAME, (void *)((unsigned long *)syscalls_table_address)[restore[0]]);
+    }
 
+    AUDIT
+    {
         printk("%s: [INFO] All new system-calls correctly installed on sys-call table\n", MODNAME);
     }
 
@@ -401,11 +407,14 @@ int init_module(void)
     int ret;
     char *enc_password;
 
-    printk("%s: ******************************************* \n", MODNAME);
-    printk("%s: [INFO] Module correctly started\n", MODNAME);
+    AUDIT
+    {
+        printk("%s: ******************************************* \n", MODNAME);
+        printk("%s: [INFO] Module correctly started\n", MODNAME);
 
-    // Adding reference monitor systemcalls the the syscalss table
-    printk("%s: [INFO] Number of entries to hack %d\n", MODNAME, HACKED_ENTRIES);
+        // Adding reference monitor systemcalls the the syscalss table
+        printk("%s: [INFO] Number of entries to hack %d\n", MODNAME, HACKED_ENTRIES);
+    }
 
     ret = initialize_syscalls();
 
@@ -413,8 +422,10 @@ int init_module(void)
     {
         return ret;
     }
-
-    printk("%s: [INFO] Setting RF initial state to OFF\n", MODNAME);
+    AUDIT
+    {
+        printk("%s: [INFO] Setting RF initial state to OFF\n", MODNAME);
+    }
 
     spin_lock(&reference_monitor.lock);
     reference_monitor.state = 1;
@@ -422,15 +433,23 @@ int init_module(void)
     reference_monitor.blacklist_size = 0;
     spin_unlock(&reference_monitor.lock);
 
-    printk("%s: [INFO] Encryipting password\n", MODNAME);
+    AUDIT
+    {
+        printk("%s: [INFO] Encryipting password\n", MODNAME);
+    }
+
     enc_password = encrypt_password(password);
     reference_monitor.password = enc_password;
 
-    printk("%s: [INFO] Password entrypted and set correctly\n", MODNAME);
-
+    AUDIT
+    {
+        printk("%s: [INFO] Password entrypted and set correctly\n", MODNAME);
+    }
     kretprobe_init();
-
-    printk("%s: [INFO] Module correctly installed\n", MODNAME);
+    AUDIT
+    {
+        printk("%s: [INFO] Module correctly installed\n", MODNAME);
+    }
     return 0;
 }
 

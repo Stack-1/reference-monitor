@@ -134,7 +134,7 @@ int euid_check(kuid_t euid)
         // check EUID
         if (!uid_eq(euid, GLOBAL_ROOT_UID))
         {
-                pr_err("%s: [INFO] Access denied: only root (EUID 0) can change the state\n", MODNAME);
+                pr_err("%s: [INFO] Access denied: only root (EUID 0) can change the state,add or remove files on blacklist\n", MODNAME);
                 return -EPERM;
         }
         return 0;

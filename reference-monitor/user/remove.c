@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
     int error_flag = 0;
     buf = getlogin();
 
-    sprintf(file_string,"/home/%s/Desktop/rf/",buf);
+    sprintf(file_string, "/home/%s/Desktop/rf/", buf);
 
     ret = syscall(REMOVE_FROM_BLACKLIST, file_string, "1234");
     if (ret == -1)
@@ -29,7 +29,13 @@ int main(int argc, char *argv[])
         error_flag = 1;
     }
 
-
+    ret = syscall(GET_BLACKLIST_SIZE, 1);
+    if (ret == -1)
+    {
+        perror("...");
+        error_flag = 1;
+    }
+    printf("Blacklist size %d\n", ret);
 
     return error_flag;
 }

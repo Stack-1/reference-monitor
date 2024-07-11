@@ -51,7 +51,6 @@ int add_to_blacklist(char *path, struct reference_monitor *rf)
         {
             spin_unlock(&rf->lock);
             kfree(kernel_rel_path);
-            printk("%s: [DEBUG] Duplicate found", MODNAME);
             return -EEXIST;
         }
         curr->next = new;
@@ -64,7 +63,6 @@ int add_to_blacklist(char *path, struct reference_monitor *rf)
             {
                 spin_unlock(&rf->lock);
                 kfree(kernel_rel_path);
-                printk("%s: [DEBUG] Duplicate found", MODNAME);
                 return -EEXIST;
             }
             curr = curr->next;
@@ -74,7 +72,6 @@ int add_to_blacklist(char *path, struct reference_monitor *rf)
         {
             spin_unlock(&rf->lock);
             kfree(kernel_rel_path);
-            printk("%s: [DEBUG] Duplicate found", MODNAME);
             return -EEXIST;
         }
         curr->next = new;

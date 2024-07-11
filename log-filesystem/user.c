@@ -4,7 +4,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define FILENAME "mount/ref-monitor-log.txt"
+#define FILENAME "/opt/mount/ref-monitor-log.txt"
 
 int main() {
     char *data = "Questo è un messaggio di log.\n";

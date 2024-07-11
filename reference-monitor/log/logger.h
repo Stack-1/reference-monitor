@@ -1,3 +1,6 @@
+#ifndef LOG_MODULE
+#define LOG_MODULE
+
 #include <linux/workqueue.h>
 
 struct log_data {
@@ -18,3 +21,4 @@ typedef struct _packed_work{
 } packed_work;
 
 void write_on_log(void);
+#endif
