@@ -3,7 +3,7 @@ singlefilefs-objs += file_system.o file.o dir.o
 
 all:
 	gcc singlefilemakefs.c -o singlefilemakefs
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	sudo make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules 
 	make load-FS-driver
 	make create-fs
 	make mount-fs
@@ -13,14 +13,14 @@ load-FS-driver:
 	sudo insmod singlefilefs.ko
 
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	sudo make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) clean
 	rm singlefilemakefs
 	
 
 create-fs:
 	dd bs=4096 count=100 if=/dev/zero of=image
 	./singlefilemakefs image
-	sudo mkdir /opt/mount
+	sudo mkdir -p /opt/mount
         
 mount-fs:
 	sudo mount -o loop -t singlefilefs image /opt/mount/

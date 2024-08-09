@@ -4,12 +4,12 @@ password ?= $(shell bash ./ask_password.sh)
 
 
 all:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
+	sudo make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules 
 	sudo make mount
-	make clean
+	sudo make clean
 
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	sudo make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) clean
 
 mount:
 	@sudo insmod the_stack_reference_monitor.ko syscalls_table_address=$$(cat /sys/module/the_usctm/parameters/sys_call_table_address) password="$(password)"
