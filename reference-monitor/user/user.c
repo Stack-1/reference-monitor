@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
+#include <pwd.h>
 
 #include "user.h"
 
@@ -11,11 +13,22 @@ int main(int argc, char *argv[])
     char *buf;
     char file_string[256];
     int error_flag = 0;
-    buf = getlogin();
+    char *blacklist;
+    int blacklist_size;
+    struct passwd *pass; 
 
-    sprintf(file_string,"/home/%s/Desktop/rf/",buf);
+    pass = getpwuid(getuid());
+    if (!pass)
+    {
+        printf("%s\n", strerror(errno));
+        return -1;
+    }
+    buf = pass->pw_name;
 
-    ret = syscall(ADD_TO_BLACKLIST, file_string, "1234");
+
+    sprintf(file_string, "/home/stack1/Desktop/rf/");
+
+    ret = syscall(ADD_TO_BLACKLIST, file_string, "pippo");
     if (ret == -1)
     {
         perror("...");
@@ -23,20 +36,6 @@ int main(int argc, char *argv[])
     }
 
 
-    ret = syscall(PRINT_BLACKLIST, 1);
-    if (ret == -1)
-    {
-        perror("...");
-        error_flag = 1;
-    }
-
-    ret = syscall(GET_BLACKLIST_SIZE, 1);
-    if (ret == -1)
-    {
-        perror("...");
-        error_flag = 1;
-    }
-    printf("Blacklist size %d\n", ret);
 
     return error_flag;
 }

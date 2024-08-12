@@ -59,12 +59,13 @@ unsigned long syscalls_table_address = 0x0;
 module_param(syscalls_table_address, ulong, 0660);
 
 unsigned long the_ni_syscall;
-unsigned long new_sys_call_array[] = {0x0, 0x0, 0x0, 0x0, 0x0};                  /* new syscalls addresses array */
+unsigned long new_sys_call_array[] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};             /* new syscalls addresses array */
 #define HACKED_ENTRIES (int)(sizeof(new_sys_call_array) / sizeof(unsigned long)) /* number of entries to be hacked */
 int restore[HACKED_ENTRIES] = {[0 ...(HACKED_ENTRIES - 1)] - 1};                 /* array of free entries on the syscall table */
 
 // syscall codes
 int switch_state_code;
+int get_reference_monitor_state;
 int add_to_blacklist_code;
 int remove_from_blacklist_code;
 int print_blacklist_code;
@@ -80,7 +81,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
 #endif
     char *state_string;
     int ret;
-
+    printk("Switch\n");
     // Check if the monitor state is admissible
     ret = rf_state_check(state);
     if (ret != 0)
@@ -147,6 +148,48 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
     return reference_monitor.state;
 }
 
+// update RF state syscall
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
+__SYSCALL_DEFINEx(1, _get_rf_state, int, dummy)
+{
+#else
+asmlinkage long sys_get_rf_state(int dummy)
+{
+#endif
+    char *state_string;
+    printk("Get state\n");
+    AUDIT
+    {
+        // Debug to print the correct state of the RF as string
+        state_string = kmalloc(sizeof(char *) * 16, GFP_KERNEL);
+        if (!state_string)
+        {
+            pr_err("%s: [ERROR] Error in kmalloc allocation while reserving memory for RF satte string to debug in kernel space\n", MODNAME);
+            return -ENOMEM;
+        }
+        switch (reference_monitor.state)
+        {
+        case RF_ON:
+            strcpy(state_string, (const char *)"ON");
+            break;
+        case RF_OFF:
+            strcpy(state_string, (const char *)"OFF");
+            break;
+        case RF_REC_ON:
+            strcpy(state_string, (const char *)"REC_ON");
+            break;
+        case RF_REC_OFF:
+            strcpy(state_string, (const char *)"REC_OFF");
+            break;
+        default:
+            break;
+        }
+        printk("%s: [INFO] Password check successful, state returned is %s\n", MODNAME, state_string);
+    }
+
+    return reference_monitor.state;
+}
+
 // Add to blacklist syscall
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(2, _add_to_blacklist, char *, path, char *, password)
@@ -156,7 +199,7 @@ asmlinkage long sys_add_to_blacklist(char *path, char *password)
 {
 #endif
     int ret;
-
+    printk("Add\n");
     // Check if the reference monitor is in reconfiguration state
     ret = is_rf_rec(&reference_monitor);
     if (ret != 0)
@@ -198,7 +241,7 @@ asmlinkage long sys_remove_from_blacklist(char *path, char *password)
 #endif
 
     int ret;
-
+    printk("Remove\n");
     // Check if the reference monitor is in reconfiguration state
     ret = is_rf_rec(&reference_monitor);
     if (ret != 0)
@@ -243,34 +286,70 @@ asmlinkage long sys_get_blacklist_size(void)
 
 // Print blacklist syscall
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(1, _print_blacklist, int, dummy)
+__SYSCALL_DEFINEx(1, _print_blacklist, char *, user_space_blacklist, int, blacklist_size)
 {
 #else
-asmlinkage long sys_print_blacklist(int dummy)
+asmlinkage long sys_print_blacklist(char *user_space_blacklist, int blacklist_size)
 {
 #endif
     struct blacklist_node *curr = reference_monitor.blacklist_head;
+    char *blacklist_entries;
+    int ret;
+
+    printk("Print\n");
+
+    if (blacklist_size != reference_monitor.blacklist_size)
+    {
+        return -1;
+    }
+
+    blacklist_entries = (char *)kmalloc(sizeof(char) * blacklist_size * PATH_MAX, GFP_KERNEL);
+    if (!blacklist_entries)
+    {
+        printk(KERN_ERR "Failed to allocate hash descriptor\n");
+        return -1;
+    }
 
     if (curr == NULL)
     {
         printk("Blacklist is empty\n");
+        blacklist_entries = "Blacklist is empty\n";
     }
     else
     {
         printk("%s: Blacklist elements:\n", MODNAME);
+        blacklist_entries = "Blacklist elements\n";
+
         while (curr->next != NULL)
         {
             printk("- %s\n", curr->path);
+            sprintf(blacklist_entries,"%s- %s\n",blacklist_entries,curr->path);
+            
             curr = curr->next;
         }
-        printk("- %s\n", curr->path);
+        sprintf(blacklist_entries,"%s- %s\n",blacklist_entries,curr->path);
     }
+    copy_to_user(user_space_blacklist, blacklist_entries, sizeof(char) * blacklist_size * PATH_MAX);
+
+    // Use Cross-Ring Data Move to copy blacklist from user to kernel space
+    ret = copy_to_user(user_space_blacklist, (void *)blacklist_entries, strlen(blacklist_entries));
+    if (ret)
+    {
+        pr_err("%s: [ERROR] Error while copying blacklist from user address space to kernel address space\n", MODNAME);
+        kfree(blacklist_entries);
+        return -EAGAIN;
+    }
+    
+    printk("Expected result: %s",blacklist_entries);
+
+    printk("Finale result: %s",user_space_blacklist);
 
     return 0;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 long sys_switch_rf_state = (unsigned long)__x64_sys_switch_rf_state;
+long sys_get_rf_state = (unsigned long)__x64_sys_get_rf_state;
 long sys_add_to_blacklist = (unsigned long)__x64_sys_add_to_blacklist;
 long sys_remove_from_blacklist = (unsigned long)__x64_sys_remove_from_blacklist;
 long sys_print_blacklist = (unsigned long)__x64_sys_print_blacklist;
@@ -326,7 +405,6 @@ int is_blacklisted(char *path)
     return 0;
 }
 
-
 /**
  *  @brief This function adds the new syscalls to the syscall table's free entries
  */
@@ -352,10 +430,11 @@ int initialize_syscalls(void)
     }
 
     new_sys_call_array[0] = (unsigned long)sys_switch_rf_state;
-    new_sys_call_array[1] = (unsigned long)sys_add_to_blacklist;
-    new_sys_call_array[2] = (unsigned long)sys_remove_from_blacklist;
-    new_sys_call_array[3] = (unsigned long)sys_print_blacklist;
-    new_sys_call_array[4] = (unsigned long)sys_get_blacklist_size;
+    new_sys_call_array[1] = (unsigned long)sys_get_rf_state;
+    new_sys_call_array[2] = (unsigned long)sys_add_to_blacklist;
+    new_sys_call_array[3] = (unsigned long)sys_remove_from_blacklist;
+    new_sys_call_array[4] = (unsigned long)sys_print_blacklist;
+    new_sys_call_array[5] = (unsigned long)sys_get_blacklist_size;
 
     CONDITIONAL
     {
@@ -394,10 +473,11 @@ int initialize_syscalls(void)
 
     /* set syscall codes */
     switch_state_code = restore[0];
-    add_to_blacklist_code = restore[1];
-    remove_from_blacklist_code = restore[2];
-    print_blacklist_code = restore[3];
-    get_blacklist_size_code = restore[4];
+    get_reference_monitor_state = restore[1];
+    add_to_blacklist_code = restore[2];
+    remove_from_blacklist_code = restore[3];
+    print_blacklist_code = restore[4];
+    get_blacklist_size_code = restore[5];
 
     return 0;
 }
