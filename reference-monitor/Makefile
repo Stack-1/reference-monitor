@@ -4,6 +4,7 @@ password ?= $(shell bash ./ask_password.sh)
 
 
 all:
+	@sudo apt install pinentry-curses 
 	sudo make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules 
 	sudo make mount
 	sudo make clean

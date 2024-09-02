@@ -81,7 +81,7 @@ asmlinkage long sys_switch_rf_state(int state, char *password)
 #endif
     char *state_string;
     int ret;
-    printk("Switch\n");
+
     // Check if the monitor state is admissible
     ret = rf_state_check(state);
     if (ret != 0)
@@ -157,7 +157,7 @@ asmlinkage long sys_get_rf_state(int dummy)
 {
 #endif
     char *state_string;
-    printk("Get state\n");
+
     AUDIT
     {
         // Debug to print the correct state of the RF as string
@@ -184,7 +184,6 @@ asmlinkage long sys_get_rf_state(int dummy)
         default:
             break;
         }
-        printk("%s: [INFO] Password check successful, state returned is %s\n", MODNAME, state_string);
     }
 
     return reference_monitor.state;
@@ -199,7 +198,7 @@ asmlinkage long sys_add_to_blacklist(char *path, char *password)
 {
 #endif
     int ret;
-    printk("Add\n");
+
     // Check if the reference monitor is in reconfiguration state
     ret = is_rf_rec(&reference_monitor);
     if (ret != 0)
@@ -241,7 +240,7 @@ asmlinkage long sys_remove_from_blacklist(char *path, char *password)
 #endif
 
     int ret;
-    printk("Remove\n");
+
     // Check if the reference monitor is in reconfiguration state
     ret = is_rf_rec(&reference_monitor);
     if (ret != 0)
@@ -265,8 +264,10 @@ asmlinkage long sys_remove_from_blacklist(char *path, char *password)
 
     // Try to add to blacklist a new path
     ret = remove_from_blacklist(path, &reference_monitor);
-    if (ret != 0)
+    if (ret == -EINVAL)
     {
+        return 1;
+    }else{
         return ret;
     }
 
@@ -286,7 +287,7 @@ asmlinkage long sys_get_blacklist_size(void)
 
 // Print blacklist syscall
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(1, _print_blacklist, char *, user_space_blacklist, int, blacklist_size)
+__SYSCALL_DEFINEx(2, _print_blacklist, char *, user_space_blacklist, int, blacklist_size)
 {
 #else
 asmlinkage long sys_print_blacklist(char *user_space_blacklist, int blacklist_size)
@@ -294,16 +295,15 @@ asmlinkage long sys_print_blacklist(char *user_space_blacklist, int blacklist_si
 #endif
     struct blacklist_node *curr = reference_monitor.blacklist_head;
     char *blacklist_entries;
+    char temp_string[256];
     int ret;
-
-    printk("Print\n");
 
     if (blacklist_size != reference_monitor.blacklist_size)
     {
         return -1;
     }
 
-    blacklist_entries = (char *)kmalloc(sizeof(char) * blacklist_size * PATH_MAX, GFP_KERNEL);
+    blacklist_entries = (char *)kmalloc(blacklist_size * PATH_MAX, GFP_KERNEL);
     if (!blacklist_entries)
     {
         printk(KERN_ERR "Failed to allocate hash descriptor\n");
@@ -312,24 +312,41 @@ asmlinkage long sys_print_blacklist(char *user_space_blacklist, int blacklist_si
 
     if (curr == NULL)
     {
-        printk("Blacklist is empty\n");
+        printk("%s: Blacklist is empty\n", MODNAME);
         blacklist_entries = "Blacklist is empty\n";
     }
     else
     {
         printk("%s: Blacklist elements:\n", MODNAME);
-        blacklist_entries = "Blacklist elements\n";
+        sprintf(blacklist_entries, "Blacklist elements\n");
 
         while (curr->next != NULL)
         {
             printk("- %s\n", curr->path);
-            sprintf(blacklist_entries,"%s- %s\n",blacklist_entries,curr->path);
-            
+            blacklist_entries = krealloc((void *)blacklist_entries, strlen(blacklist_entries) + strlen(temp_string), GFP_KERNEL);
+            if (!blacklist_entries)
+            {
+                printk(KERN_ERR "Failed to re-allocate hash descriptor\n");
+                return -1;
+            }
+
+            sprintf(temp_string, "- %s\n", curr->path);
+            strcat(blacklist_entries, temp_string);
+
             curr = curr->next;
         }
-        sprintf(blacklist_entries,"%s- %s\n",blacklist_entries,curr->path);
+        blacklist_entries = krealloc((void *)blacklist_entries, strlen(blacklist_entries) + strlen(temp_string), GFP_KERNEL);
+        if (!blacklist_entries)
+        {
+            printk(KERN_ERR "Failed to re-allocate hash descriptor\n");
+            return -1;
+        }
+
+        printk("- %s\n", curr->path);
+
+        sprintf(temp_string, "- %s\n", curr->path);
+        strcat(blacklist_entries, temp_string);
     }
-    copy_to_user(user_space_blacklist, blacklist_entries, sizeof(char) * blacklist_size * PATH_MAX);
 
     // Use Cross-Ring Data Move to copy blacklist from user to kernel space
     ret = copy_to_user(user_space_blacklist, (void *)blacklist_entries, strlen(blacklist_entries));
@@ -339,10 +356,6 @@ asmlinkage long sys_print_blacklist(char *user_space_blacklist, int blacklist_si
         kfree(blacklist_entries);
         return -EAGAIN;
     }
-    
-    printk("Expected result: %s",blacklist_entries);
-
-    printk("Finale result: %s",user_space_blacklist);
 
     return 0;
 }

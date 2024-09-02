@@ -27,11 +27,13 @@ int change_state(int rf_state, char *password)
             printf("%s: Invalid Password\n", strerror(errno));
             return HOME_VALUE;
         }
-        else if(errno == EPERM)
+        else if (errno == EPERM)
         {
             printf("%s: Client should be in EUID root mode\n", strerror(errno));
             return WRONG_EUID_VALUE;
-        }else{
+        }
+        else
+        {
             printf("Unexpected error: %s\n", strerror(errno));
         }
         return ret;
@@ -115,7 +117,6 @@ int add_to_blacklist(char *path, char *password)
     return ret;
 }
 
-
 int remove_from_blacklist(char *path, char *password)
 {
     int ret = 0;
@@ -128,12 +129,17 @@ int remove_from_blacklist(char *path, char *password)
 
         return EXIT_FAILURE;
     }
-
-    printf("%s succesfully added to blacklist\n", path);
+    else if (ret == 1)
+    {
+        printf("Path %s not found in blacklist\n", path);
+    }
+    else
+    {
+        printf("%s succesfully removed from blacklist\n", path);
+    }
 
     return ret;
 }
-
 
 void print_blacklist()
 {
@@ -154,7 +160,7 @@ void print_blacklist()
 
     blacklist = (char *)malloc(sizeof(char) * blacklist_size * 4096);
 
-    ret = syscall(PRINT_BLACKLIST, blacklist);
+    ret = syscall(PRINT_BLACKLIST, blacklist, blacklist_size);
     if (ret == -1)
     {
 
@@ -196,7 +202,7 @@ int get_function_number()
     }
     else
     {
-        printf("= 4 - Exit                                                              =\n");
+        printf("= 3 - Exit                                                              =\n");
     }
     printf("=                                                                       =\n");
     printf("=========================================================================\n");
@@ -212,7 +218,7 @@ int get_function_number()
         input_number = -1;
     }
 
-    if ((input_number == 4) && (rf_state == 0 || rf_state == 1))
+    if ((input_number == 3) && (rf_state == 0 || rf_state == 1))
     { // RF is NOT in reconfiguration state
         input_number = EXIT_VALUE;
     }
@@ -352,60 +358,103 @@ void exit_function()
     system("clear");
 }
 
-int getpasswd(char *passwd, int size)
+/* read a string from fp into pw masking keypress with mask char.
+getpasswd will read upto sz - 1 chars into pw, null-terminating
+the resulting string. On success, the number of characters in
+pw are returned, -1 otherwise.
+*/
+ssize_t getpasswd(char **pw, size_t sz, int mask, FILE *fp)
 {
-    int c;
-    int n = 0;
-    do
-    {
-        c = getchar();
-        if (c != '\n' || c != '\r')
-        {
-            passwd[n++] = c;
-        }
-        else if (c == '\b')
-        {
-            passwd[n--] = 0;
-        }
-    } while (c != '\n' && c != '\r' && n < (size - 1));
-    passwd[n] = '\0';
-    return n;
-}
+    printf("Insert reference monitor password\n");
+    getchar();
+    if (!pw || !sz || !fp)
+        return -1; /* validate input   */
+#ifdef MAX_PASS_LEN
+    if (sz > MAX_PASS_LEN)
+        sz = MAX_PASS_LEN;
+#endif
 
-int set_disp_mode(int fd, int option)
-{
-    int err;
-    struct termios term;
-    if (tcgetattr(fd, &term) == -1)
-    {
-        perror("Cannot get the attribution of the terminal\n");
-        return 1;
+    if (*pw == NULL)
+    { /* reallocate if no address */
+        void *tmp = realloc(*pw, sz * sizeof **pw);
+        if (!tmp)
+            return -1;
+        memset(tmp, 0, sz); /* initialize memory to 0   */
+        *pw = (char *)tmp;
     }
-    if (option)
-        term.c_lflag |= ECHOFLAGS;
-    else
-        term.c_lflag &= ~ECHOFLAGS;
-    err = tcsetattr(fd, TCSAFLUSH, &term);
-    if (err == -1 && err == EINTR)
+
+    size_t idx = 0; /* index, number of chars in read   */
+    int c = 0;
+
+    struct termios old_kbd_mode; /* orig keyboard settings   */
+    struct termios new_kbd_mode;
+
+    if (tcgetattr(0, &old_kbd_mode))
+    { /* save orig settings   */
+        fprintf(stderr, "%s() error: tcgetattr failed.\n", __func__);
+        return -1;
+    } /* copy old to new */
+    memcpy(&new_kbd_mode, &old_kbd_mode, sizeof(struct termios));
+
+    new_kbd_mode.c_lflag &= ~(ICANON | ECHO); /* new kbd flags */
+    new_kbd_mode.c_cc[VTIME] = 0;
+    new_kbd_mode.c_cc[VMIN] = 1;
+    if (tcsetattr(0, TCSANOW, &new_kbd_mode))
     {
-        perror("Cannot set the attribution of the terminal");
-        return 1;
+        fprintf(stderr, "%s() error: tcsetattr failed.\n", __func__);
+        return -1;
     }
-    return 0;
+
+    /* read chars from fp, mask if valid char specified */
+    while (((c = fgetc(fp)) != '\n' && c != EOF && idx < sz - 1) ||
+           (idx == sz - 1 && c == 127))
+    {
+        if (c != 127)
+        {
+            if (31 < mask && mask < 127) /* valid ascii char */
+                fputc(mask, stdout);
+            (*pw)[idx++] = c;
+        }
+        else if (idx > 0)
+        { /* handle backspace (del)   */
+            if (31 < mask && mask < 127)
+            {
+                fputc(0x8, stdout);
+                fputc(' ', stdout);
+                fputc(0x8, stdout);
+            }
+            (*pw)[--idx] = 0;
+        }
+    }
+    (*pw)[idx] = 0; /* null-terminate   */
+
+    /* reset original keyboard  */
+    if (tcsetattr(0, TCSANOW, &old_kbd_mode))
+    {
+        fprintf(stderr, "%s() error: tcsetattr failed.\n", __func__);
+        return -1;
+    }
+
+    if (idx == sz - 1 && c != '\n') /* warn if pw truncated */
+        fprintf(stderr, " (%s() warning: truncated at %zu chars.)\n",
+                __func__, sz - 1);
+
+    puts("");
+    return idx; /* number of chars in passwd    */
 }
 
 int main(int argc, char **argv)
 {
     int ret;
     mod_info *mod_info;
-    char *password;
     char path[4096];
-    char psw[MAX_PASS_LEN];
     int passw_size;
     int rf_state;
     int single_char;
-
-    password = (char *)malloc(sizeof(char) * MAX_PASS_LEN);
+    char psw[MAX_PASS_LEN] = {0};
+    char *password = psw;
+    FILE *fp = stdin;
+    ssize_t nchr = 0;
 
 MODULE_INFO_DISPLAY:
     mod_info = (struct mod_info *)malloc(sizeof(struct mod_info));
@@ -502,30 +551,30 @@ HOME:
         scanf(" %d", &rf_state);
         if (rf_state < 0 || rf_state > 3)
         {
-            printf("Error: Invalid state for reference monitor");
+            printf("Error: Invalid state for reference monitorn");
             fflush(stdout);
             PRESS_ANY_KEY();
             goto HOME;
         }
-        printf("Insert reference monitor password\n");
-        getchar();
-        set_disp_mode(STDIN_FILENO, 0);
-        passw_size = getpasswd(password, MAX_PASS_LEN);
-        set_disp_mode(STDIN_FILENO, 1);
-        memset(psw, 0, MAX_PASS_LEN);
-        strncpy(psw, password, passw_size - 1);
+
+        nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
+        if (nchr == 0)
+        {
+            printf("Error: Password must be selected to change RF state\n");
+            PRESS_ANY_KEY();
+            goto HOME;
+        }
 
         ret = change_state(rf_state, psw);
 
-
         if (ret != 0)
         {
-            if(ret == WRONG_EUID_VALUE || ret == HOME_VALUE)
+            if (ret == WRONG_EUID_VALUE || ret == HOME_VALUE)
             {
                 PRESS_ANY_KEY();
                 goto HOME;
             }
-            else 
+            else
             {
                 printf("Error: Unexpected error in switch rf state syscall, system will shout down\n");
                 PRESS_ANY_KEY();
@@ -541,27 +590,34 @@ HOME:
         break;
     case 3:
         printf("Insert the full path of the file to add to blacklist\n");
-        scanf("%s", path);
-
-        printf("Insert reference monitor password\n");
-        getchar();
-        set_disp_mode(STDIN_FILENO, 0);
-        passw_size = getpasswd(password, MAX_PASS_LEN);
-        set_disp_mode(STDIN_FILENO, 1);
-        add_to_blacklist(path, password);
         FFLUSH(stdout);
+        scanf("%s", path);
+        FFLUSH(stdout);
+
+        nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
+        if (nchr == 0)
+        {
+            printf("Error: Password must be selected to change RF state\n");
+            PRESS_ANY_KEY();
+            goto HOME;
+        }
+        add_to_blacklist(path, password);
         break;
     case 4:
         printf("Insert the full path of the file to remove from blacklist\n");
-        scanf("%s", path);
-
-        printf("Insert reference monitor password\n");
-        getchar();
-        set_disp_mode(STDIN_FILENO, 0);
-        passw_size = getpasswd(password, MAX_PASS_LEN);
-        set_disp_mode(STDIN_FILENO, 1);
-        remove_from_blacklist(path, password);
         FFLUSH(stdout);
+        scanf("%s", path);
+        FFLUSH(stdout);
+
+        nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
+        if (nchr == 0)
+        {
+            printf("Error: Password must be selected to change RF state\n");
+            PRESS_ANY_KEY();
+            goto HOME;
+        }
+
+        remove_from_blacklist(path, password);
         break;
     case 5:
         print_blacklist();
@@ -574,6 +630,7 @@ HOME:
     default:
         FFLUSH(stdout);
         printf("Error: No valid number as been selected\n");
+        PRESS_ANY_KEY();
         break;
     }
 

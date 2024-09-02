@@ -25,7 +25,6 @@ get_password() {
 
 password=$(get_password)
 
-# The password is now stored in the $password variable
 echo "$password"
 
 

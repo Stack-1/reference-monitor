@@ -117,6 +117,7 @@ int password_check(char *password, struct reference_monitor *rf)
                 return -EAGAIN;
         }
 
+
         if (strcmp(rf->password, encrypt_password(kernel_password)) != 0)
         {
                 pr_err("%s: [INFO] Access denied: invalid password\n", MODNAME);

@@ -115,51 +115,37 @@ int remove_from_blacklist(char *path, struct reference_monitor *rf)
     {
         goto not_found;
     }
-    else if (curr->next == NULL)
+    else if (strcmp(curr->path, kernel_path) == 0)
     {
-        if (strcmp(curr->path, kernel_path) == 0)
-        {
-            rf->blacklist_head = NULL;
-            rf->blacklist_size = 0;
-            goto found;
-        }
-        goto not_found;
+        rf->blacklist_head = curr->next;
+        rf->blacklist_size--;
+        goto found;
     }
     else
     {
-        prev = curr;
-        curr = curr->next;
-        if (strcmp(curr->path, kernel_path) == 0)
-        {
-            prev = curr->next->next;
-            curr = NULL;
-            rf->blacklist_size--;
-            goto found;
-        }
-
-        while (curr->next != NULL)
+        while (curr != NULL && strcmp(curr->path, kernel_path) != 0)
         {
             prev = curr;
             curr = curr->next;
-            if (strcmp(curr->path, kernel_path) == 0)
-            {
-                prev = curr->next->next;
-                curr = NULL;
-                rf->blacklist_size--;
-                goto found;
-            }
         }
+
+        if(curr == NULL){
+            goto not_found;
+        }
+
+        // Unlink center node
+        prev->next = curr->next;
+        goto found;
     }
 
 not_found:
     spin_unlock(&rf->lock);
-    printk("%s: [INFO] Path %s not found in blacklist", MODNAME, kernel_path);
-    kfree(kernel_path);
+    printk("%s: [INFO] Path %s not found in blacklist\n", MODNAME, kernel_path);
     return -EINVAL;
 
 found:
+
     spin_unlock(&rf->lock);
-    printk("%s: [INFO] Path %s removed succesfully to blacklist", MODNAME, kernel_path);
-    kfree(kernel_path);
+    printk("%s: [INFO] Path %s removed succesfully from blacklist\n", MODNAME, kernel_path);
     return 0;
 }

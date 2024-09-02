@@ -1,21 +1,12 @@
 # Reference Monitor
 
-<!-- OUTLINE -->
-<summary>Outline</summary>
-<ol>
-  <li>
-      <a href="#Introduction">Introduction</a>
-  </li>
-  <li>
-      <a href="#project-specification">Project Specification</a>
-  </li>
-  <li>
-    <a href="#project-implementation">Project Implementation</a>
-  </li>
-  <li>
-    <a href="#getting-started">Getting Started</a>
-  </li>
-</ol>
+- [Reference Monitor](#reference-monitor)
+  - [Introduction](#introduction)
+  - [Project Specification](#project-specification)
+  - [Project Implementation](#project-implementation)
+  - [Getting Started](#getting-started)
+
+
 
 
 This is a project developed for the Advanced Operating Systems class in Tor Vergata University, In particular the goal of the project is to implement a Kernel module for Linux OS using x86 processors to setup a reference monitor that handles a file system.
@@ -73,11 +64,7 @@ The first thing done in this module is the syscall table hacking adding four dif
 
 ## Getting Started
 To compile and run this project firstly disable the secure boot or sign the modules used with a valid CA sign. Secondly you can follow the automatic installation or the manual one:
-- Automatic install: Exec 
-```bat
-bash ./launc.sh 
-```  
-and it should compile and mount all 3 modules asking only for root password and the password of the reference monitor to insert. 
-- Manual install: You can both use make, make mount from the ```reference-monitro/``` directory or you can navigate in each sub-directory and use make to compile and mount simultaniously.
+- **Automatic install:** To compile and ruin this project you just have to go in the client repository and use ```make``` and ```make run``` to launch the GUI. Then you can compile and mount all 3 modules (NOTE: The GUI will be excecuted in root mode, so you have to insert the user root password).
+- **Manual install:** You can both use make, make mount from the ```reference-monitro/``` directory or you can navigate in each sub-directory and use make to compile and mount simultaniously.
 
 Next, you can use the files in reference-monitor/``` reference-monitor/user/``` to try some functionalities to check if the system is working correctly. Or you can also check the ```reference-monitor/tests/``` directory for some bash files that automatically excecute some tests.
