@@ -107,12 +107,12 @@ int add_to_blacklist(char *path, char *password)
     if (ret == -1)
     {
 
-        printf("%s: Unexpected error\n", strerror(errno));
+        printf("\n%s: Unexpected error\n", strerror(errno));
 
         return EXIT_FAILURE;
     }
 
-    printf("%s succesfully added to blacklist\n", path);
+    printf("\n%s succesfully added to blacklist\n", path);
 
     return ret;
 }
@@ -125,17 +125,17 @@ int remove_from_blacklist(char *path, char *password)
     if (ret == -1)
     {
 
-        printf("%s: Unexpected error\n", strerror(errno));
+        printf("\n%s: Unexpected error\n", strerror(errno));
 
         return EXIT_FAILURE;
     }
     else if (ret == 1)
     {
-        printf("Path %s not found in blacklist\n", path);
+        printf("\nPath %s not found in blacklist\n", path);
     }
     else
     {
-        printf("%s succesfully removed from blacklist\n", path);
+        printf("\n%s succesfully removed from blacklist\n", path);
     }
 
     return ret;
@@ -365,8 +365,7 @@ pw are returned, -1 otherwise.
 */
 ssize_t getpasswd(char **pw, size_t sz, int mask, FILE *fp)
 {
-    printf("Insert reference monitor password\n");
-    getchar();
+
     if (!pw || !sz || !fp)
         return -1; /* validate input   */
 #ifdef MAX_PASS_LEN
@@ -439,7 +438,6 @@ ssize_t getpasswd(char **pw, size_t sz, int mask, FILE *fp)
         fprintf(stderr, " (%s() warning: truncated at %zu chars.)\n",
                 __func__, sz - 1);
 
-    puts("");
     return idx; /* number of chars in passwd    */
 }
 
@@ -556,7 +554,7 @@ HOME:
             PRESS_ANY_KEY();
             goto HOME;
         }
-
+        printf("Insert reference monitor password\n");
         nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
         if (nchr == 0)
         {
@@ -590,14 +588,17 @@ HOME:
         break;
     case 3:
         printf("Insert the full path of the file to add to blacklist\n");
-        FFLUSH(stdout);
+
         scanf("%s", path);
+
+
+        printf("Insert reference monitor password\n");
         FFLUSH(stdout);
 
         nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
         if (nchr == 0)
         {
-            printf("Error: Password must be selected to change RF state\n");
+            printf("Error: Password must be selected to add to blacklist state\n");
             PRESS_ANY_KEY();
             goto HOME;
         }
@@ -605,14 +606,18 @@ HOME:
         break;
     case 4:
         printf("Insert the full path of the file to remove from blacklist\n");
-        FFLUSH(stdout);
+
         scanf("%s", path);
+
+
+        printf("Insert reference monitor password\n");
+
         FFLUSH(stdout);
 
         nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
         if (nchr == 0)
         {
-            printf("Error: Password must be selected to change RF state\n");
+            printf("Error: Password must be selected to remove from blacklist\n");
             PRESS_ANY_KEY();
             goto HOME;
         }

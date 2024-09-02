@@ -30,7 +30,7 @@
 #define WRONG_EUID_VALUE    7777
 
 
-#define PRESS_ANY_KEY() printf("Press any key to continue\n"); while(!getchar()){};  
+#define PRESS_ANY_KEY() printf("Press ENTER to continue\n"); while(!getchar()){};  
 
 // Macro to flush stdout
 #define FFLUSH(stdout) while(!getchar()){}
