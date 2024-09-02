@@ -86,7 +86,6 @@ void write_on_log(void)
                 return;
         }
 
-        spin_lock(&def_work_lock);
 
         /* get path of the offending program */
         mm = current->mm;
@@ -115,5 +114,4 @@ void write_on_log(void)
 
         schedule_work(&def_work->the_work);
 
-        spin_unlock(&def_work_lock);
 }
