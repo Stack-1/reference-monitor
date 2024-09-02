@@ -33,7 +33,7 @@
 #define PRESS_ANY_KEY() printf("Press ENTER to continue\n"); while(!getchar()){};  
 
 // Macro to flush stdout
-#define FFLUSH(stdout) while(!getchar()){}
+#define FFLUSH(stdout) while(getchar() != '\n')
 
 
 #define MAX_PASS_LEN    32

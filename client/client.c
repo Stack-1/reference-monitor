@@ -555,6 +555,7 @@ HOME:
             goto HOME;
         }
         printf("Insert reference monitor password\n");
+        FFLUSH(stdout);
         nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
         if (nchr == 0)
         {
@@ -562,7 +563,7 @@ HOME:
             PRESS_ANY_KEY();
             goto HOME;
         }
-
+        printf("\n");
         ret = change_state(rf_state, psw);
 
         if (ret != 0)
@@ -590,10 +591,10 @@ HOME:
         printf("Insert the full path of the file to add to blacklist\n");
 
         scanf("%s", path);
-
+        FFLUSH(stdout);
 
         printf("Insert reference monitor password\n");
-        FFLUSH(stdout);
+
 
         nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
         if (nchr == 0)
@@ -608,11 +609,10 @@ HOME:
         printf("Insert the full path of the file to remove from blacklist\n");
 
         scanf("%s", path);
-
+        FFLUSH(stdout);
 
         printf("Insert reference monitor password\n");
 
-        FFLUSH(stdout);
 
         nchr = getpasswd(&password, MAX_PASS_LEN, '*', fp);
         if (nchr == 0)
